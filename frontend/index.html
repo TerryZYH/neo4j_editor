@@ -79,7 +79,7 @@
       pointer-events: none;
     }
 
-    .header-btns { display: flex; gap: 8px; margin-left: auto; }
+    .header-btns { display: flex; gap: 8px; margin-left: auto; align-items: center; }
     .btn {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -110,6 +110,48 @@
     }
     .status-dot.ok { background: var(--success); }
     .status-dot.err { background: var(--danger); }
+
+    /* ── Online users ── */
+    .online-users {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-right: 4px;
+    }
+    .user-avatar {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff;
+      border: 2px solid var(--bg);
+      margin-left: -6px;
+      title: attr(title);
+      cursor: default;
+      flex-shrink: 0;
+    }
+    .user-avatar:first-child { margin-left: 0; }
+
+    /* ── User chip ── */
+    .user-chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px 3px 6px;
+      font-size: 12px;
+    }
+    .user-chip-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+    .role-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .role-badge.admin { background: #f39c1222; color: #f39c12; border: 1px solid #f39c1244; }
+    .role-badge.user  { background: #58a6ff22; color: #58a6ff; border: 1px solid #58a6ff44; }
 
     /* ── Layout ── */
     .layout {
@@ -184,6 +226,39 @@
     #graph-canvas {
       width: 100%;
       height: 100%;
+    }
+
+    /* ── Cursor overlay ── */
+    #cursor-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 10;
+    }
+    .remote-cursor {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      pointer-events: none;
+      transition: left .05s linear, top .05s linear;
+    }
+    .remote-cursor-arrow {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 12px solid currentColor;
+      transform: rotate(-30deg) translate(-2px, -2px);
+    }
+    .remote-cursor-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
     }
 
     .canvas-hint {
@@ -273,6 +348,16 @@
       font-weight: 500;
     }
 
+    .lock-notice {
+      background: #f39c1215;
+      border: 1px solid #f39c1240;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #f39c12;
+      margin-bottom: 12px;
+    }
+
     .inspector-footer {
       padding: 12px 16px;
       border-top: 1px solid var(--border);
@@ -331,7 +416,7 @@
 
     .form-group { margin-bottom: 14px; }
     label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 500; }
-    input[type="text"], select, textarea {
+    input[type="text"], input[type="password"], input[type="email"], select, textarea {
       width: 100%;
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -343,7 +428,8 @@
       transition: border-color .15s;
       font-family: inherit;
     }
-    input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus,
+    select:focus, textarea:focus { border-color: var(--accent); }
     textarea { resize: vertical; min-height: 80px; }
     select option { background: var(--surface2); }
 
@@ -374,6 +460,93 @@
       transition: border-color .15s, color .15s;
     }
     .add-prop-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Auth overlay ── */
+    #auth-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #auth-overlay.hidden { display: none; }
+    .auth-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 380px;
+      max-width: 95vw;
+      padding: 32px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .auth-logo {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .auth-sub {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+    .auth-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .auth-tab {
+      flex: 1;
+      text-align: center;
+      padding: 7px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: background .15s, color .15s;
+    }
+    .auth-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+    .auth-form { display: flex; flex-direction: column; gap: 14px; }
+    .auth-error {
+      background: #f8514922;
+      border: 1px solid #f8514944;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--danger);
+      display: none;
+    }
+    .auth-error.show { display: block; }
+    .auth-btn {
+      background: var(--accent);
+      border: none;
+      color: #000;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background .15s;
+      margin-top: 4px;
+    }
+    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-hint {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
 
     /* ── Search results dropdown ── */
     .search-results {
@@ -463,6 +636,50 @@
 </head>
 <body>
 
+<!-- ── Auth overlay ──────────────────────────────────────── -->
+<div id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">Neo4j Editor</div>
+    <div class="auth-sub">图谱协作编辑平台</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">登录</div>
+      <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">注册</div>
+    </div>
+    <div id="auth-error" class="auth-error"></div>
+
+    <!-- Login form -->
+    <div id="form-login" class="auth-form">
+      <div class="form-group" style="margin:0">
+        <label>用户名</label>
+        <input type="text" id="login-username" placeholder="输入用户名" autocomplete="username" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>密码</label>
+        <input type="password" id="login-password" placeholder="输入密码" autocomplete="current-password" />
+      </div>
+      <button class="auth-btn" onclick="doLogin()">登录</button>
+    </div>
+
+    <!-- Register form -->
+    <div id="form-register" class="auth-form" style="display:none">
+      <div class="form-group" style="margin:0">
+        <label>用户名</label>
+        <input type="text" id="reg-username" placeholder="至少 2 个字符" autocomplete="username" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>邮箱</label>
+        <input type="email" id="reg-email" placeholder="your@email.com" autocomplete="email" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>密码</label>
+        <input type="password" id="reg-password" placeholder="至少 6 个字符" autocomplete="new-password" />
+      </div>
+      <button class="auth-btn" onclick="doRegister()">注册</button>
+      <div class="auth-hint">首位注册用户自动成为管理员</div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Header ───────────────────────────────────────────── -->
 <header>
   <div class="logo">Neo4j Editor <span>图谱编辑</span></div>
@@ -478,7 +695,27 @@
     <button class="btn primary" id="btn-add-node">＋ 新建节点</button>
     <button class="btn" id="btn-add-edge" title="选中两个节点后创建关系">🔗 新建关系</button>
     <button class="btn danger" id="btn-delete" title="删除选中元素">🗑 删除</button>
-    <div style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+
+    <div style="width:1px;height:24px;background:var(--border);margin:0 4px;"></div>
+
+    <!-- Online users -->
+    <div class="online-users" id="online-users" title="在线用户"></div>
+
+    <!-- Current user chip -->
+    <div class="user-chip" id="user-chip" style="display:none">
+      <div class="user-chip-dot" id="user-chip-dot"></div>
+      <span id="user-chip-name"></span>
+      <span class="role-badge" id="user-chip-role"></span>
+    </div>
+
+    <!-- Admin link -->
+    <a id="admin-link" href="/admin.html" target="_blank"
+       class="btn" style="display:none;text-decoration:none">⚙️ 管理</a>
+
+    <!-- Logout -->
+    <button class="btn" id="btn-logout" onclick="doLogout()" style="display:none">退出</button>
+
+    <div style="display:flex;align-items:center;gap:6px;margin-left:4px;">
       <div id="status-dot" class="status-dot"></div>
       <span id="status-text" style="font-size:12px;color:var(--text-muted)">连接中…</span>
     </div>
@@ -521,6 +758,7 @@
   <!-- Graph canvas -->
   <div class="canvas-wrap">
     <div id="graph-canvas"></div>
+    <div id="cursor-overlay"></div>
 
     <div id="empty-state" class="empty-state">
       <div class="empty-icon">🕸️</div>
@@ -603,7 +841,22 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const API = 'http://localhost:8000/api';
+const API     = 'http://localhost:8000/api';
+const WS_URL  = 'ws://localhost:8000/ws';
+
+// ── Auth state ────────────────────────────────────────────────────────────────
+let authToken   = localStorage.getItem('auth_token');
+let currentUser = null;  // { sub, username, role }
+
+// ── WebSocket state ───────────────────────────────────────────────────────────
+let ws              = null;
+let wsReconnectTimer = null;
+const onlineUsers   = new Map();   // user_id -> { username, color }
+const lockedEntities = new Map();  // entity_id -> { user_id, username, color }
+const lockCallbacks  = new Map();  // entity_id -> resolve fn (Promise)
+let currentEditingNodeId = null;
+let currentEditingEdgeId = null;
+let lastCursorSend   = 0;
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -620,7 +873,7 @@ function getLabelColor(label) {
   return labelColorMap[label];
 }
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── Graph state ───────────────────────────────────────────────────────────────
 let network = null;
 let visNodes = new vis.DataSet();
 let visEdges = new vis.DataSet();
@@ -629,18 +882,126 @@ let selectedEdgeIds = [];
 let pendingEdgeCallback = null;
 let pendingNodeCallback = null;
 
+// ── Auth functions ────────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  document.getElementById('form-login').style.display    = tab === 'login'    ? 'flex' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? 'flex' : 'none';
+  document.getElementById('auth-error').classList.remove('show');
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!username || !password) { showAuthError('请填写用户名和密码'); return; }
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showAuthError(data.detail || '登录失败'); return; }
+    onLoginSuccess(data);
+  } catch (e) { showAuthError('无法连接到服务器'); }
+}
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  if (!username || !email || !password) { showAuthError('请填写所有字段'); return; }
+  try {
+    const res = await fetch(API + '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showAuthError(data.detail || '注册失败'); return; }
+    onLoginSuccess(data);
+  } catch (e) { showAuthError('无法连接到服务器'); }
+}
+
+function onLoginSuccess(data) {
+  authToken = data.token;
+  currentUser = { username: data.username, role: data.role };
+  localStorage.setItem('auth_token', authToken);
+  document.getElementById('auth-overlay').classList.add('hidden');
+  initUserUI();
+  connectWS();
+  initNetwork();
+  checkStatus();
+  refreshLabels();
+  setInterval(checkStatus, 30000);
+}
+
+function doLogout() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('auth_token');
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById('auth-overlay').classList.remove('hidden');
+  // Reset UI
+  document.getElementById('user-chip').style.display = 'none';
+  document.getElementById('btn-logout').style.display = 'none';
+  document.getElementById('admin-link').style.display = 'none';
+  document.getElementById('online-users').innerHTML = '';
+}
+
+function initUserUI() {
+  if (!currentUser) return;
+  // User chip
+  const chip = document.getElementById('user-chip');
+  chip.style.display = 'flex';
+  document.getElementById('user-chip-name').textContent = currentUser.username;
+  const roleEl = document.getElementById('user-chip-role');
+  roleEl.textContent = currentUser.role === 'admin' ? '管理员' : '用户';
+  roleEl.className = 'role-badge ' + currentUser.role;
+  // Color the dot
+  const fakeId = currentUser.username;
+  const colors = ["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#e91e63","#00bcd4","#ff5722"];
+  const color = colors[Math.abs(hashCode(fakeId)) % colors.length];
+  document.getElementById('user-chip-dot').style.background = color;
+  // Logout & admin
+  document.getElementById('btn-logout').style.display = 'flex';
+  if (currentUser.role === 'admin') {
+    document.getElementById('admin-link').style.display = 'flex';
+  }
+}
+
+function hashCode(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  return h;
+}
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function api(method, path, body) {
   try {
     const opts = {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': 'Bearer ' + authToken } : {}),
+      },
     };
     if (body !== undefined) opts.body = JSON.stringify(body);
     const resp = await fetch(API + path, opts);
+    if (resp.status === 401) {
+      doLogout();
+      throw new Error('登录已过期，请重新登录');
+    }
     if (!resp.ok) {
-      const err = await resp.text();
-      throw new Error(err || resp.statusText);
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
     }
     return await resp.json();
   } catch (e) {
@@ -656,6 +1017,261 @@ function toast(msg, type = 'ok') {
   t.textContent = msg;
   document.getElementById('toast-container').appendChild(t);
   setTimeout(() => t.remove(), 3500);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  if (!authToken) return;
+  clearTimeout(wsReconnectTimer);
+  try {
+    ws = new WebSocket(`${WS_URL}?token=${authToken}`);
+    ws.onopen = () => {
+      console.log('WS connected');
+    };
+    ws.onmessage = (e) => {
+      try { handleWSMessage(JSON.parse(e.data)); } catch {}
+    };
+    ws.onclose = (e) => {
+      if (e.code === 4001) { doLogout(); return; }
+      // Reconnect after 3s
+      wsReconnectTimer = setTimeout(connectWS, 3000);
+    };
+    ws.onerror = () => {};
+  } catch {}
+}
+
+function wsSend(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  }
+}
+
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case 'init':
+      // Populate online users and locks from server state
+      onlineUsers.clear();
+      msg.users.forEach(u => { if (u.username !== currentUser?.username) onlineUsers.set(u.user_id, u); });
+      lockedEntities.clear();
+      Object.values(msg.locks || {}).forEach(lk => lockedEntities.set(lk.entity_id, lk));
+      renderOnlineUsers();
+      // Apply existing locks visually
+      lockedEntities.forEach((lk, eid) => applyLockVisual(eid, true, lk.username, lk.color));
+      break;
+
+    case 'user_joined':
+      if (msg.user.username !== currentUser?.username) {
+        onlineUsers.set(msg.user.user_id, msg.user);
+        renderOnlineUsers();
+        toast(`👤 ${msg.user.username} 加入了编辑`);
+      }
+      break;
+
+    case 'user_left':
+      const u = onlineUsers.get(msg.user_id);
+      if (u) { toast(`👤 ${u.username} 离开了编辑`); }
+      onlineUsers.delete(msg.user_id);
+      removeCursor(msg.user_id);
+      renderOnlineUsers();
+      break;
+
+    case 'cursor_move':
+      updateCursor(msg.user_id, msg.x, msg.y);
+      break;
+
+    case 'lock_result': {
+      const cb = lockCallbacks.get(msg.entity_id);
+      if (cb) {
+        lockCallbacks.delete(msg.entity_id);
+        if (!msg.success) {
+          toast(`🔒 ${msg.locked_by ? `正在被「${msg.locked_by}」编辑` : '锁定失败，请稍后重试'}`, 'err');
+        }
+        cb(msg.success);
+      }
+      break;
+    }
+
+    case 'entity_locked':
+      lockedEntities.set(msg.entity_id, { user_id: msg.user_id, username: msg.username, color: msg.color });
+      applyLockVisual(msg.entity_id, true, msg.username, msg.color);
+      // Refresh inspector if this entity is open
+      refreshInspectorLock(msg.entity_id, true, msg.username);
+      break;
+
+    case 'entity_unlocked':
+      lockedEntities.delete(msg.entity_id);
+      applyLockVisual(msg.entity_id, false);
+      refreshInspectorLock(msg.entity_id, false);
+      break;
+
+    case 'entity_created':
+      if (msg.entity_type === 'node') {
+        if (!visNodes.get(msg.entity.id)) visNodes.add(makeVisNode(msg.entity));
+      } else {
+        if (!visEdges.get(msg.entity.id)) visEdges.add(makeVisEdge(msg.entity));
+      }
+      updateStats(); updateEmptyState();
+      break;
+
+    case 'entity_updated':
+      if (msg.entity_type === 'node') {
+        const existing = visNodes.get(msg.entity.id);
+        const lk = lockedEntities.get(msg.entity.id);
+        visNodes.update(lk ? makeVisNodeLocked(msg.entity, lk.username, lk.color) : makeVisNode(msg.entity));
+        // Refresh inspector if open on this node
+        if (selectedNodeIds.includes(msg.entity.id)) showNodeInspector(msg.entity);
+      } else {
+        const existingE = visEdges.get(msg.entity.id);
+        if (existingE) {
+          visEdges.update(makeVisEdge(msg.entity));
+          if (selectedEdgeIds.includes(msg.entity.id)) showEdgeInspector(msg.entity);
+        }
+      }
+      break;
+
+    case 'entity_deleted':
+      if (msg.entity_type === 'node') {
+        const connEdges = network ? network.getConnectedEdges(msg.entity_id) : [];
+        visEdges.remove(connEdges);
+        visNodes.remove(msg.entity_id);
+        if (selectedNodeIds.includes(msg.entity_id)) hideInspector();
+      } else {
+        visEdges.remove(msg.entity_id);
+        if (selectedEdgeIds.includes(msg.entity_id)) hideInspector();
+      }
+      updateStats(); updateEmptyState();
+      break;
+  }
+}
+
+// Heartbeat to keep locks alive
+setInterval(() => wsSend({ type: 'heartbeat' }), 25000);
+
+// ── Lock helpers ──────────────────────────────────────────────────────────────
+function acquireLock(entityId) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast('⚠️ 未连接到协作服务器，将以本地模式编辑', 'err');
+    return Promise.resolve(true);  // allow editing offline
+  }
+  return new Promise((resolve) => {
+    lockCallbacks.set(entityId, resolve);
+    wsSend({ type: 'lock_entity', entity_id: entityId });
+    setTimeout(() => {
+      if (lockCallbacks.has(entityId)) {
+        lockCallbacks.delete(entityId);
+        toast('⚠️ 锁定请求超时', 'err');
+        resolve(false);
+      }
+    }, 5000);
+  });
+}
+
+function releaseLock(entityId) {
+  wsSend({ type: 'unlock_entity', entity_id: entityId });
+}
+
+// ── Lock visual ───────────────────────────────────────────────────────────────
+function applyLockVisual(entityId, locked, username = '', color = '') {
+  const vn = visNodes.get(entityId);
+  if (vn) {
+    if (locked) {
+      visNodes.update(makeVisNodeLocked(vn._data, username, color));
+    } else {
+      visNodes.update(makeVisNode(vn._data));
+    }
+    return;
+  }
+  const ve = visEdges.get(entityId);
+  if (ve) {
+    if (locked) {
+      visEdges.update({
+        id: entityId,
+        label: `${ve._data.type} 🔒${username}`,
+        color: { color, highlight: color },
+        width: 3,
+        _data: ve._data,
+      });
+    } else {
+      visEdges.update(makeVisEdge(ve._data));
+    }
+  }
+}
+
+function refreshInspectorLock(entityId, locked, username = '') {
+  if (!selectedNodeIds.includes(entityId) && !selectedEdgeIds.includes(entityId)) return;
+  const lockDiv = document.getElementById('inspector-lock-notice');
+  const footer  = document.getElementById('inspector-footer');
+  if (locked) {
+    if (!lockDiv) {
+      const div = document.createElement('div');
+      div.id = 'inspector-lock-notice';
+      div.className = 'lock-notice';
+      div.textContent = `🔒 正在被「${username}」编辑，暂不可修改`;
+      document.getElementById('inspector-body').prepend(div);
+    }
+    footer.querySelectorAll('.btn').forEach(b => { b.disabled = true; b.style.opacity = '.4'; });
+  } else {
+    if (lockDiv) lockDiv.remove();
+    footer.querySelectorAll('.btn').forEach(b => { b.disabled = false; b.style.opacity = ''; });
+  }
+}
+
+// ── Cursor rendering ──────────────────────────────────────────────────────────
+const cursorEls = {};  // user_id -> DOM element
+
+function updateCursor(userId, canvasX, canvasY) {
+  if (!network) return;
+  const user = onlineUsers.get(userId);
+  if (!user) return;
+  const domPos = network.canvasToDOM({ x: canvasX, y: canvasY });
+
+  let el = cursorEls[userId];
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'remote-cursor';
+    el.innerHTML = `
+      <div class="remote-cursor-arrow" style="color:${user.color}"></div>
+      <div class="remote-cursor-label" style="background:${user.color}">${user.username}</div>
+    `;
+    document.getElementById('cursor-overlay').appendChild(el);
+    cursorEls[userId] = el;
+  }
+  el.style.left = domPos.x + 'px';
+  el.style.top  = domPos.y + 'px';
+}
+
+function removeCursor(userId) {
+  const el = cursorEls[userId];
+  if (el) { el.remove(); delete cursorEls[userId]; }
+}
+
+// Refresh cursor DOM positions on zoom/pan
+function refreshAllCursors() {
+  if (!network) return;
+  onlineUsers.forEach((user, userId) => {
+    const el = cursorEls[userId];
+    if (!el) return;
+    // cursor positions are stored per-element as data attributes
+    const cx = parseFloat(el.dataset.cx || 0);
+    const cy = parseFloat(el.dataset.cy || 0);
+    const domPos = network.canvasToDOM({ x: cx, y: cy });
+    el.style.left = domPos.x + 'px';
+    el.style.top  = domPos.y + 'px';
+  });
+}
+
+// ── Online users panel ────────────────────────────────────────────────────────
+function renderOnlineUsers() {
+  const container = document.getElementById('online-users');
+  container.innerHTML = '';
+  onlineUsers.forEach(u => {
+    const av = document.createElement('div');
+    av.className = 'user-avatar';
+    av.style.background = u.color;
+    av.textContent = u.username.charAt(0).toUpperCase();
+    av.title = u.username;
+    container.appendChild(av);
+  });
 }
 
 // ── Node display ──────────────────────────────────────────────────────────────
@@ -674,13 +1290,24 @@ function makeVisNode(n) {
     id: n.id,
     label: nodeLabel(n),
     title: formatTooltip(n.labels, n.properties),
-    color: {
-      background: color,
-      border: color,
-      highlight: { background: color, border: '#fff' },
-    },
+    color: { background: color, border: color, highlight: { background: color, border: '#fff' } },
     font: { color: '#fff', size: 12, face: 'sans-serif' },
     borderWidth: 2,
+    shapeProperties: { borderDashes: false },
+    _data: n,
+  };
+}
+
+function makeVisNodeLocked(n, username, lockColor) {
+  const color = getLabelColor(n.labels[0] || 'Node');
+  return {
+    id: n.id,
+    label: `${nodeLabel(n)}\n🔒 ${username}`,
+    title: `<div style="max-width:200px">🔒 <b>正在被「${username}」编辑</b></div>`,
+    color: { background: color, border: lockColor, highlight: { background: color, border: lockColor } },
+    font: { color: '#fff', size: 12, face: 'sans-serif' },
+    borderWidth: 4,
+    shapeProperties: { borderDashes: [6, 3] },
     _data: n,
   };
 }
@@ -707,47 +1334,40 @@ function formatTooltip(labels, props) {
 
 // ── Build network ─────────────────────────────────────────────────────────────
 function initNetwork() {
+  if (network) return;
   const container = document.getElementById('graph-canvas');
   const options = {
-    nodes: {
-      shape: 'dot',
-      size: 20,
-      borderWidth: 2,
-      shadow: { enabled: true, color: 'rgba(0,0,0,.4)', size: 8 },
-    },
-    edges: {
-      width: 1.5,
-      shadow: false,
-      selectionWidth: 3,
-    },
+    nodes: { shape: 'dot', size: 20, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,.4)', size: 8 } },
+    edges: { width: 1.5, shadow: false, selectionWidth: 3 },
     physics: {
       enabled: true,
-      barnesHut: {
-        gravitationalConstant: -8000,
-        springLength: 120,
-        springConstant: 0.04,
-        damping: 0.09,
-      },
+      barnesHut: { gravitationalConstant: -8000, springLength: 120, springConstant: 0.04, damping: 0.09 },
       stabilization: { iterations: 150, updateInterval: 20 },
     },
-    interaction: {
-      hover: true,
-      tooltipDelay: 300,
-      multiselect: true,
-      selectConnectedEdges: false,
-    },
+    interaction: { hover: true, tooltipDelay: 300, multiselect: true, selectConnectedEdges: false },
     manipulation: { enabled: false },
   };
 
   network = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
-
   network.on('selectNode', onSelectNode);
   network.on('selectEdge', onSelectEdge);
   network.on('deselectNode', onDeselect);
   network.on('deselectEdge', onDeselect);
   network.on('doubleClick', onDoubleClick);
-  network.on('stabilizationIterationsDone', () => {
-    network.setOptions({ physics: { enabled: false } });
+  network.on('stabilizationIterationsDone', () => network.setOptions({ physics: { enabled: false } }));
+  network.on('zoom', refreshAllCursors);
+  network.on('dragEnd', refreshAllCursors);
+
+  // Mouse move → send cursor position
+  container.addEventListener('mousemove', (e) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (now - lastCursorSend < 50) return;
+    lastCursorSend = now;
+    const rect = container.getBoundingClientRect();
+    const domPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const canvasPos = network.DOMtoCanvas(domPos);
+    wsSend({ type: 'cursor_move', x: canvasPos.x, y: canvasPos.y });
   });
 
   updateEmptyState();
@@ -761,12 +1381,11 @@ async function loadGraph(labelFilter = '') {
   visNodes.clear();
   visEdges.clear();
 
-  if (data.nodes.length) {
-    visNodes.add(data.nodes.map(makeVisNode));
-  }
-  if (data.edges.length) {
-    visEdges.add(data.edges.map(makeVisEdge));
-  }
+  if (data.nodes.length) visNodes.add(data.nodes.map(n => {
+    const lk = lockedEntities.get(n.id);
+    return lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
+  }));
+  if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
 
   network.setOptions({ physics: { enabled: true } });
   setTimeout(() => network.setOptions({ physics: { enabled: false } }), 3000);
@@ -796,16 +1415,11 @@ async function refreshLabels() {
       const color = getLabelColor(lbl);
       const item = document.createElement('div');
       item.className = 'label-item';
-      item.innerHTML = `
-        <div class="label-dot" style="background:${color}"></div>
-        <span class="label-name">${lbl}</span>
-      `;
+      item.innerHTML = `<div class="label-dot" style="background:${color}"></div><span class="label-name">${lbl}</span>`;
       item.onclick = () => loadGraph(lbl);
       list.appendChild(item);
     });
-    if (!labels.length) {
-      list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">暂无标签</div>';
-    }
+    if (!labels.length) list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">暂无标签</div>';
   } catch {}
 }
 
@@ -838,42 +1452,32 @@ function onDeselect() {
 
 // ── Inspector ─────────────────────────────────────────────────────────────────
 function showNodeInspector(n) {
-  const color = getLabelColor(n.labels[0] || 'Node');
   document.getElementById('inspector-icon').textContent = '📦';
   document.getElementById('inspector-title').textContent = nodeLabel(n);
 
-  const body = document.getElementById('inspector-body');
+  const body   = document.getElementById('inspector-body');
   const footer = document.getElementById('inspector-footer');
+  const lk = lockedEntities.get(n.id);
 
   const labelTags = (n.labels || []).map(l =>
     `<span class="tag" style="background:${getLabelColor(l)}22;color:${getLabelColor(l)};border:1px solid ${getLabelColor(l)}44">${l}</span>`
   ).join('');
 
   const propsHtml = Object.entries(n.properties || {}).map(([k, v]) => `
-    <div class="prop-row">
-      <div class="prop-key">${k}</div>
-      <div class="prop-val">${v}</div>
-    </div>
+    <div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${v}</div></div>
   `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
 
   body.innerHTML = `
-    <div class="prop-section">
-      <div class="prop-section-title">标签</div>
-      <div class="tag-list">${labelTags}</div>
-    </div>
-    <div class="prop-section">
-      <div class="prop-section-title">属性</div>
-      ${propsHtml}
-    </div>
-    <div class="prop-section">
-      <div class="prop-section-title">ID</div>
-      <div class="prop-val" style="font-size:11px;word-break:break-all">${n.id}</div>
-    </div>
+    ${lk ? `<div id="inspector-lock-notice" class="lock-notice">🔒 正在被「${lk.username}」编辑，暂不可修改</div>` : ''}
+    <div class="prop-section"><div class="prop-section-title">标签</div><div class="tag-list">${labelTags}</div></div>
+    <div class="prop-section"><div class="prop-section-title">属性</div>${propsHtml}</div>
+    <div class="prop-section"><div class="prop-section-title">ID</div><div class="prop-val" style="font-size:11px;word-break:break-all">${n.id}</div></div>
   `;
 
+  const disabled = lk ? 'disabled style="opacity:.4"' : '';
   footer.innerHTML = `
-    <button class="btn" onclick="openEditNodeModal('${n.id}')">✏️ 编辑</button>
-    <button class="btn danger" onclick="deleteNode('${n.id}')">🗑 删除</button>
+    <button class="btn" onclick="openEditNodeModal('${n.id}')" ${disabled}>✏️ 编辑</button>
+    <button class="btn danger" onclick="deleteNode('${n.id}')" ${disabled}>🗑 删除</button>
   `;
 
   document.getElementById('inspector').classList.remove('hidden');
@@ -883,44 +1487,38 @@ function showEdgeInspector(e) {
   document.getElementById('inspector-icon').textContent = '🔗';
   document.getElementById('inspector-title').textContent = e.type;
 
-  const body = document.getElementById('inspector-body');
+  const body   = document.getElementById('inspector-body');
   const footer = document.getElementById('inspector-footer');
+  const lk = lockedEntities.get(e.id);
 
   const propsHtml = Object.entries(e.properties || {}).map(([k, v]) => `
-    <div class="prop-row">
-      <div class="prop-key">${k}</div>
-      <div class="prop-val">${v}</div>
-    </div>
+    <div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${v}</div></div>
   `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
 
   body.innerHTML = `
-    <div class="prop-section">
-      <div class="prop-section-title">关系类型</div>
+    ${lk ? `<div id="inspector-lock-notice" class="lock-notice">🔒 正在被「${lk.username}」编辑，暂不可修改</div>` : ''}
+    <div class="prop-section"><div class="prop-section-title">关系类型</div>
       <span class="tag" style="background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff44">${e.type}</span>
     </div>
-    <div class="prop-section">
-      <div class="prop-section-title">属性</div>
-      ${propsHtml}
-    </div>
+    <div class="prop-section"><div class="prop-section-title">属性</div>${propsHtml}</div>
   `;
 
+  const disabled = lk ? 'disabled style="opacity:.4"' : '';
   footer.innerHTML = `
-    <button class="btn" onclick="openEditEdgeModal('${e.id}')">✏️ 编辑</button>
-    <button class="btn danger" onclick="deleteEdge('${e.id}')">🗑 删除</button>
+    <button class="btn" onclick="openEditEdgeModal('${e.id}')" ${disabled}>✏️ 编辑</button>
+    <button class="btn danger" onclick="deleteEdge('${e.id}')" ${disabled}>🗑 删除</button>
   `;
 
   document.getElementById('inspector').classList.remove('hidden');
 }
 
-function showMultiInspector(nodeCount, edgeCount) {
+function showMultiInspector(nodeCount) {
   document.getElementById('inspector-icon').textContent = '☰';
   document.getElementById('inspector-title').textContent = '多选';
-  document.getElementById('inspector-body').innerHTML = `
-    <div style="color:var(--text-muted);font-size:13px;padding:8px 0;">
-      已选中 ${nodeCount} 个节点
-    </div>`;
-  document.getElementById('inspector-footer').innerHTML = `
-    <button class="btn danger" onclick="deleteSelected()">🗑 批量删除</button>`;
+  document.getElementById('inspector-body').innerHTML =
+    `<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">已选中 ${nodeCount} 个节点</div>`;
+  document.getElementById('inspector-footer').innerHTML =
+    `<button class="btn danger" onclick="deleteSelected()">🗑 批量删除</button>`;
   document.getElementById('inspector').classList.remove('hidden');
 }
 
@@ -930,23 +1528,20 @@ function hideInspector() {
 
 // ── Double click edit ─────────────────────────────────────────────────────────
 function onDoubleClick(params) {
-  if (params.nodes.length === 1) {
-    openEditNodeModal(params.nodes[0]);
-  } else if (params.edges.length === 1) {
-    openEditEdgeModal(params.edges[0]);
-  }
+  if (params.nodes.length === 1) openEditNodeModal(params.nodes[0]);
+  else if (params.edges.length === 1) openEditEdgeModal(params.edges[0]);
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 function closeModal(id) {
   document.getElementById(id).classList.add('hidden');
-  if (id === 'node-modal' && pendingNodeCallback) {
-    pendingNodeCallback(null);
-    pendingNodeCallback = null;
+  if (id === 'node-modal') {
+    if (currentEditingNodeId) { releaseLock(currentEditingNodeId); currentEditingNodeId = null; }
+    if (pendingNodeCallback) { pendingNodeCallback(null); pendingNodeCallback = null; }
   }
-  if (id === 'edge-modal' && pendingEdgeCallback) {
-    pendingEdgeCallback(null);
-    pendingEdgeCallback = null;
+  if (id === 'edge-modal') {
+    if (currentEditingEdgeId) { releaseLock(currentEditingEdgeId); currentEditingEdgeId = null; }
+    if (pendingEdgeCallback) { pendingEdgeCallback(null); pendingEdgeCallback = null; }
   }
 }
 
@@ -991,35 +1586,35 @@ async function saveNewNode() {
   const labelsRaw = document.getElementById('node-labels').value.trim();
   const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
   const properties = collectProps('node-props-editor');
-
   try {
     const n = await api('POST', '/nodes', { labels, properties });
-    const visNode = makeVisNode(n);
-    visNodes.add(visNode);
-    updateStats();
-    updateEmptyState();
+    visNodes.add(makeVisNode(n));
+    updateStats(); updateEmptyState();
     closeModal('node-modal');
     toast('✅ 节点已创建');
     refreshLabels();
-    setTimeout(() => {
-      network.selectNodes([n.id]);
-      network.focus(n.id, { animation: true, scale: 1.2 });
-      showNodeInspector(n);
-    }, 100);
+    setTimeout(() => { network.selectNodes([n.id]); network.focus(n.id, { animation: true, scale: 1.2 }); showNodeInspector(n); }, 100);
   } catch {}
 }
 
 // ── Edit node ─────────────────────────────────────────────────────────────────
 async function openEditNodeModal(nodeId) {
+  // Check if already locked by someone else (fast local check)
+  const lk = lockedEntities.get(nodeId);
+  if (lk) { toast(`🔒 该节点正在被「${lk.username}」编辑`, 'err'); return; }
+
+  const acquired = await acquireLock(nodeId);
+  if (!acquired) return;
+  currentEditingNodeId = nodeId;
+
   const visNode = visNodes.get(nodeId);
-  if (!visNode) return;
+  if (!visNode) { releaseLock(nodeId); currentEditingNodeId = null; return; }
   const n = visNode._data;
 
   document.getElementById('node-modal-title').textContent = '编辑节点';
   document.getElementById('node-labels').value = (n.labels || []).join(', ');
   clearPropsEditor('node-props-editor');
   Object.entries(n.properties || {}).forEach(([k, v]) => addPropRow('node-props-editor', k, v));
-
   document.getElementById('node-modal').classList.remove('hidden');
   document.getElementById('node-modal-save').onclick = () => saveEditNode(nodeId);
 }
@@ -1028,10 +1623,11 @@ async function saveEditNode(nodeId) {
   const labelsRaw = document.getElementById('node-labels').value.trim();
   const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
   const properties = collectProps('node-props-editor');
-
   try {
     const n = await api('PUT', `/nodes/${nodeId}`, { labels, properties });
     visNodes.update(makeVisNode(n));
+    currentEditingNodeId = null;  // prevent closeModal from double-releasing
+    releaseLock(nodeId);
     closeModal('node-modal');
     toast('✅ 节点已更新');
     showNodeInspector(n);
@@ -1041,16 +1637,15 @@ async function saveEditNode(nodeId) {
 
 // ── Delete node ───────────────────────────────────────────────────────────────
 async function deleteNode(nodeId) {
+  const lk = lockedEntities.get(nodeId);
+  if (lk) { toast(`🔒 该节点正在被「${lk.username}」编辑，无法删除`, 'err'); return; }
   if (!confirm('确定删除这个节点及其所有关系吗？')) return;
   try {
     await api('DELETE', `/nodes/${nodeId}`);
-    visNodes.remove(nodeId);
-    // Remove connected edges from vis
     const connectedEdges = network.getConnectedEdges(nodeId);
     visEdges.remove(connectedEdges);
-    hideInspector();
-    updateStats();
-    updateEmptyState();
+    visNodes.remove(nodeId);
+    hideInspector(); updateStats(); updateEmptyState();
     toast('✅ 节点已删除');
     refreshLabels();
   } catch {}
@@ -1058,17 +1653,16 @@ async function deleteNode(nodeId) {
 
 async function deleteSelected() {
   if (!selectedNodeIds.length) return;
+  const locked = selectedNodeIds.filter(id => lockedEntities.has(id));
+  if (locked.length) { toast(`🔒 ${locked.length} 个节点正被编辑，无法删除`, 'err'); return; }
   if (!confirm(`确定删除选中的 ${selectedNodeIds.length} 个节点吗？`)) return;
   try {
     for (const id of selectedNodeIds) {
       await api('DELETE', `/nodes/${id}`);
-      const connectedEdges = network.getConnectedEdges(id);
-      visEdges.remove(connectedEdges);
+      visEdges.remove(network.getConnectedEdges(id));
     }
     visNodes.remove(selectedNodeIds);
-    hideInspector();
-    updateStats();
-    updateEmptyState();
+    hideInspector(); updateStats(); updateEmptyState();
     toast(`✅ 已删除 ${selectedNodeIds.length} 个节点`);
     refreshLabels();
   } catch {}
@@ -1076,10 +1670,7 @@ async function deleteSelected() {
 
 // ── Create edge ───────────────────────────────────────────────────────────────
 function openCreateEdgeModal() {
-  if (selectedNodeIds.length !== 2) {
-    toast('⚠️ 请先选中两个节点（按住 Ctrl 多选）', 'err');
-    return;
-  }
+  if (selectedNodeIds.length !== 2) { toast('⚠️ 请先选中两个节点（按住 Ctrl 多选）', 'err'); return; }
   document.getElementById('edge-modal-title').textContent = '新建关系';
   document.getElementById('edge-type').value = '';
   clearPropsEditor('edge-props-editor');
@@ -1092,15 +1683,13 @@ function openCreateEdgeModal() {
 async function loadRelTypes() {
   try {
     const types = await api('GET', '/relationship-types');
-    const dl = document.getElementById('rel-types-list');
-    dl.innerHTML = types.map(t => `<option value="${t}">`).join('');
+    document.getElementById('rel-types-list').innerHTML = types.map(t => `<option value="${t}">`).join('');
   } catch {}
 }
 
 async function saveNewEdge(sourceId, targetId) {
   const type = document.getElementById('edge-type').value.trim().toUpperCase() || 'RELATES_TO';
   const properties = collectProps('edge-props-editor');
-
   try {
     const e = await api('POST', '/relationships/by-element-id?' +
       new URLSearchParams({ source_element_id: sourceId, target_element_id: targetId, type }));
@@ -1113,15 +1702,21 @@ async function saveNewEdge(sourceId, targetId) {
 
 // ── Edit edge ─────────────────────────────────────────────────────────────────
 async function openEditEdgeModal(edgeId) {
+  const lk = lockedEntities.get(edgeId);
+  if (lk) { toast(`🔒 该关系正在被「${lk.username}」编辑`, 'err'); return; }
+
+  const acquired = await acquireLock(edgeId);
+  if (!acquired) return;
+  currentEditingEdgeId = edgeId;
+
   const visEdge = visEdges.get(edgeId);
-  if (!visEdge) return;
+  if (!visEdge) { releaseLock(edgeId); currentEditingEdgeId = null; return; }
   const e = visEdge._data;
 
   document.getElementById('edge-modal-title').textContent = '编辑关系';
   document.getElementById('edge-type').value = e.type || '';
   clearPropsEditor('edge-props-editor');
   Object.entries(e.properties || {}).forEach(([k, v]) => addPropRow('edge-props-editor', k, v));
-
   document.getElementById('edge-modal').classList.remove('hidden');
   document.getElementById('edge-modal-save').onclick = () => saveEditEdge(edgeId);
   loadRelTypes();
@@ -1129,10 +1724,11 @@ async function openEditEdgeModal(edgeId) {
 
 async function saveEditEdge(edgeId) {
   const properties = collectProps('edge-props-editor');
-
   try {
     const e = await api('PUT', `/relationships/${edgeId}`, { properties });
     visEdges.update(makeVisEdge(e));
+    currentEditingEdgeId = null;
+    releaseLock(edgeId);
     closeModal('edge-modal');
     toast('✅ 关系已更新');
     showEdgeInspector(e);
@@ -1141,12 +1737,13 @@ async function saveEditEdge(edgeId) {
 
 // ── Delete edge ───────────────────────────────────────────────────────────────
 async function deleteEdge(edgeId) {
+  const lk = lockedEntities.get(edgeId);
+  if (lk) { toast(`🔒 该关系正在被「${lk.username}」编辑，无法删除`, 'err'); return; }
   if (!confirm('确定删除这条关系吗？')) return;
   try {
     await api('DELETE', `/relationships/${edgeId}`);
     visEdges.remove(edgeId);
-    hideInspector();
-    updateStats();
+    hideInspector(); updateStats();
     toast('✅ 关系已删除');
   } catch {}
 }
@@ -1158,21 +1755,20 @@ document.addEventListener('keydown', e => {
     if (selectedNodeIds.length) deleteSelected();
     else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
   }
-  if (e.key === 'Escape') {
-    closeModal('node-modal');
-    closeModal('edge-modal');
-  }
+  if (e.key === 'Escape') { closeModal('node-modal'); closeModal('edge-modal'); }
 });
+
+// Auth overlay keyboard
+document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('reg-password').addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
 
 // ── Search ────────────────────────────────────────────────────────────────────
 let searchTimer;
 document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (!q) {
-    document.getElementById('search-results').classList.add('hidden');
-    return;
-  }
+  if (!q) { document.getElementById('search-results').classList.add('hidden'); return; }
   searchTimer = setTimeout(() => doSearch(q), 300);
 });
 
@@ -1189,11 +1785,10 @@ async function doSearch(q) {
     } else {
       el.innerHTML = results.map(n => {
         const color = getLabelColor(n.labels[0] || 'Node');
-        return `
-          <div class="search-result-item" onclick="focusNode('${n.id}')">
-            <span class="result-label-tag" style="background:${color}33;color:${color}">${n.labels[0] || 'Node'}</span>
-            <span class="result-name">${nodeLabel(n)}</span>
-          </div>`;
+        return `<div class="search-result-item" onclick="focusNode('${n.id}')">
+          <span class="result-label-tag" style="background:${color}33;color:${color}">${n.labels[0] || 'Node'}</span>
+          <span class="result-name">${nodeLabel(n)}</span>
+        </div>`;
       }).join('');
     }
     el.classList.remove('hidden');
@@ -1203,8 +1798,6 @@ async function doSearch(q) {
 async function focusNode(nodeId) {
   document.getElementById('search-results').classList.add('hidden');
   document.getElementById('search-input').value = '';
-
-  // If node not in canvas, load its neighbors
   if (!visNodes.get(nodeId)) {
     try {
       const data = await api('GET', `/node-neighbors/${nodeId}`);
@@ -1212,11 +1805,9 @@ async function focusNode(nodeId) {
       const newEdges = data.edges.filter(e => !visEdges.get(e.id));
       if (newNodes.length) visNodes.add(newNodes.map(makeVisNode));
       if (newEdges.length) visEdges.add(newEdges.map(makeVisEdge));
-      updateStats();
-      updateEmptyState();
+      updateStats(); updateEmptyState();
     } catch {}
   }
-
   if (visNodes.get(nodeId)) {
     network.selectNodes([nodeId]);
     network.focus(nodeId, { animation: { duration: 500 }, scale: 1.3 });
@@ -1227,10 +1818,7 @@ async function focusNode(nodeId) {
 
 // ── Expand neighbors ──────────────────────────────────────────────────────────
 document.getElementById('btn-expand').onclick = async () => {
-  if (!selectedNodeIds.length) {
-    toast('⚠️ 请先选中一个节点', 'err');
-    return;
-  }
+  if (!selectedNodeIds.length) { toast('⚠️ 请先选中一个节点', 'err'); return; }
   try {
     for (const nodeId of selectedNodeIds) {
       const data = await api('GET', `/node-neighbors/${nodeId}`);
@@ -1241,8 +1829,7 @@ document.getElementById('btn-expand').onclick = async () => {
     }
     network.setOptions({ physics: { enabled: true } });
     setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2000);
-    updateStats();
-    updateEmptyState();
+    updateStats(); updateEmptyState();
     toast('✅ 邻居节点已展开');
   } catch {}
 };
@@ -1253,13 +1840,8 @@ async function checkStatus() {
     const s = await fetch(API + '/status').then(r => r.json());
     const dot = document.getElementById('status-dot');
     const txt = document.getElementById('status-text');
-    if (s.connected) {
-      dot.className = 'status-dot ok';
-      txt.textContent = '已连接';
-    } else {
-      dot.className = 'status-dot err';
-      txt.textContent = '未连接';
-    }
+    if (s.connected) { dot.className = 'status-dot ok'; txt.textContent = '已连接'; }
+    else             { dot.className = 'status-dot err'; txt.textContent = '未连接'; }
   } catch {
     document.getElementById('status-dot').className = 'status-dot err';
     document.getElementById('status-text').textContent = '服务不可用';
@@ -1275,30 +1857,46 @@ document.getElementById('btn-delete').onclick = () => {
   else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
   else toast('⚠️ 请先选中要删除的元素', 'err');
 };
-document.getElementById('btn-fit').onclick = () => network.fit({ animation: true });
+document.getElementById('btn-fit').onclick = () => network && network.fit({ animation: true });
 document.getElementById('btn-layout').onclick = () => {
+  if (!network) return;
   network.setOptions({ physics: { enabled: true } });
   setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2500);
 };
-document.getElementById('btn-zoom-in').onclick = () => network.moveTo({ scale: network.getScale() * 1.3, animation: true });
-document.getElementById('btn-zoom-out').onclick = () => network.moveTo({ scale: network.getScale() * 0.77, animation: true });
-document.getElementById('inspector-close').onclick = () => {
-  hideInspector();
-  network.unselectAll();
-};
+document.getElementById('btn-zoom-in').onclick = () => network && network.moveTo({ scale: network.getScale() * 1.3, animation: true });
+document.getElementById('btn-zoom-out').onclick = () => network && network.moveTo({ scale: network.getScale() * 0.77, animation: true });
+document.getElementById('inspector-close').onclick = () => { hideInspector(); network && network.unselectAll(); };
 
-// Close modal when clicking overlay
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) closeModal(overlay.id);
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-initNetwork();
-checkStatus();
-refreshLabels();
-setInterval(checkStatus, 30000);
+async function init() {
+  if (!authToken) return; // stay on auth overlay
+  // Validate token
+  try {
+    const res = await fetch(API + '/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + authToken }
+    });
+    if (!res.ok) { localStorage.removeItem('auth_token'); authToken = null; return; }
+    const data = await res.json();
+    currentUser = { username: data.username, role: data.role };
+    document.getElementById('auth-overlay').classList.add('hidden');
+    initUserUI();
+    connectWS();
+    initNetwork();
+    checkStatus();
+    refreshLabels();
+    setInterval(checkStatus, 30000);
+  } catch {
+    // Server might be starting up — stay on overlay
+    localStorage.removeItem('auth_token');
+    authToken = null;
+  }
+}
+
+init();
 </script>
 </body>
 </html>
