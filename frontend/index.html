@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neo4j 图谱编辑器</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --danger: #f85149;
+      --success: #56d364;
+      --warning: #e3b341;
+      --radius: 8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .logo {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .logo span { color: var(--text-muted); font-weight: 400; font-size: 13px; }
+
+    .search-wrap {
+      flex: 1;
+      max-width: 360px;
+      position: relative;
+    }
+    .search-wrap input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 6px 12px 6px 32px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap .icon {
+      position: absolute;
+      left: 10px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .header-btns { display: flex; gap: 8px; margin-left: auto; }
+    .btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: background .15s, border-color .15s;
+      user-select: none;
+    }
+    .btn:hover { background: var(--border); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+    .btn.danger:hover { background: var(--danger); color: #fff; }
+    .btn.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background: var(--success); }
+    .status-dot.err { background: var(--danger); }
+
+    /* ── Layout ── */
+    .layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Left sidebar ── */
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-section {
+      border-bottom: 1px solid var(--border);
+      padding: 12px;
+    }
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .label-list { display: flex; flex-direction: column; gap: 4px; }
+    .label-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .1s;
+    }
+    .label-item:hover { background: var(--surface2); }
+    .label-item.active { background: var(--surface2); }
+    .label-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .label-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .label-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 1px 6px;
+    }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-item {
+      background: var(--surface2);
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+    .stat-value { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .sidebar-actions { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .sidebar-actions .btn { justify-content: center; width: 100%; }
+
+    /* ── Canvas ── */
+    .canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #graph-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .canvas-hint {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22,27,34,.9);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      pointer-events: none;
+      white-space: nowrap;
+      backdrop-filter: blur(4px);
+    }
+
+    .zoom-controls {
+      position: absolute;
+      bottom: 52px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .zoom-controls .btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* ── Right panel ── */
+    .inspector {
+      width: 280px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width .2s;
+      overflow: hidden;
+    }
+    .inspector.hidden { width: 0; }
+    .inspector-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .inspector-title { font-weight: 600; flex: 1; }
+    .inspector-close {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 16px; padding: 2px;
+    }
+    .inspector-close:hover { color: var(--text); }
+    .inspector-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+    .prop-section { margin-bottom: 16px; }
+    .prop-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: .05em;
+      margin-bottom: 8px;
+    }
+    .prop-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+    .prop-key { font-size: 11px; color: var(--text-muted); }
+    .prop-val {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag {
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .inspector-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+    .inspector-footer .btn { flex: 1; justify-content: center; font-size: 12px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      backdrop-filter: blur(2px);
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 480px;
+      max-width: 95vw;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 48px rgba(0,0,0,.5);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .modal-title { font-size: 16px; font-weight: 600; flex: 1; }
+    .modal-close {
+      background: none; border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      padding: 2px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 500; }
+    input[type="text"], select, textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s;
+      font-family: inherit;
+    }
+    input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 80px; }
+    select option { background: var(--surface2); }
+
+    .props-editor { display: flex; flex-direction: column; gap: 6px; }
+    .prop-edit-row { display: flex; gap: 6px; align-items: center; }
+    .prop-edit-row input { flex: 1; }
+    .prop-del-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--danger);
+      border-radius: 6px;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-size: 14px;
+      flex-shrink: 0;
+      transition: background .1s;
+    }
+    .prop-del-btn:hover { background: var(--danger); color: #fff; }
+    .add-prop-btn {
+      background: none;
+      border: 1px dashed var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      text-align: center;
+      transition: border-color .15s, color .15s;
+    }
+    .add-prop-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Search results dropdown ── */
+    .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-top: 4px;
+      z-index: 200;
+      max-height: 300px;
+      overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .search-results.hidden { display: none; }
+    .search-result-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: var(--surface2); }
+    .result-label-tag {
+      font-size: 11px;
+      border-radius: 10px;
+      padding: 1px 7px;
+      flex-shrink: 0;
+    }
+    .result-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-id { font-size: 11px; color: var(--text-muted); }
+
+    /* ── Toast ── */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2000;
+    }
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.4);
+      animation: slideIn .2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.ok { border-color: var(--success); }
+    .toast.err { border-color: var(--danger); }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .empty-state.hidden { display: none; }
+    .empty-icon { font-size: 48px; }
+    .empty-text { font-size: 15px; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────── -->
+<header>
+  <div class="logo">Neo4j Editor <span>图谱编辑</span></div>
+
+  <div class="search-wrap">
+    <span class="icon">🔍</span>
+    <input id="search-input" type="text" placeholder="搜索节点..." autocomplete="off" />
+    <div id="search-results" class="search-results hidden"></div>
+  </div>
+
+  <div class="header-btns">
+    <button class="btn" id="btn-load">🔄 加载图谱</button>
+    <button class="btn primary" id="btn-add-node">＋ 新建节点</button>
+    <button class="btn" id="btn-add-edge" title="选中两个节点后创建关系">🔗 新建关系</button>
+    <button class="btn danger" id="btn-delete" title="删除选中元素">🗑 删除</button>
+    <div style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+      <div id="status-dot" class="status-dot"></div>
+      <span id="status-text" style="font-size:12px;color:var(--text-muted)">连接中…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main layout ──────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Left sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">统计</div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="stat-nodes">0</div>
+          <div class="stat-label">节点</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="stat-edges">0</div>
+          <div class="stat-label">关系</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="flex:1;overflow-y:auto;">
+      <div class="sidebar-title">节点标签</div>
+      <div id="label-list" class="label-list">
+        <div style="color:var(--text-muted);font-size:12px;">加载中…</div>
+      </div>
+    </div>
+
+    <div class="sidebar-actions">
+      <button class="btn" id="btn-fit">⬜ 适应屏幕</button>
+      <button class="btn" id="btn-layout">⊞ 重排布局</button>
+      <button class="btn" id="btn-expand" title="展开选中节点的邻居">↗ 展开邻居</button>
+    </div>
+  </aside>
+
+  <!-- Graph canvas -->
+  <div class="canvas-wrap">
+    <div id="graph-canvas"></div>
+
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">🕸️</div>
+      <div class="empty-text">图谱为空，点击「加载图谱」或「新建节点」开始</div>
+    </div>
+
+    <div class="canvas-hint" id="canvas-hint">单击选中 · 双击编辑 · 拖拽移动</div>
+
+    <div class="zoom-controls">
+      <button class="btn" id="btn-zoom-in">＋</button>
+      <button class="btn" id="btn-zoom-out">－</button>
+    </div>
+  </div>
+
+  <!-- Right inspector -->
+  <aside class="inspector hidden" id="inspector">
+    <div class="inspector-header">
+      <div id="inspector-icon">📦</div>
+      <div class="inspector-title" id="inspector-title">属性</div>
+      <button class="inspector-close" id="inspector-close">×</button>
+    </div>
+    <div class="inspector-body" id="inspector-body"></div>
+    <div class="inspector-footer" id="inspector-footer"></div>
+  </aside>
+</div>
+
+<!-- ── Node modal ──────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="node-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="node-modal-title">新建节点</div>
+      <button class="modal-close" onclick="closeModal('node-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>节点标签（多个用逗号分隔）</label>
+        <input type="text" id="node-labels" placeholder="例: Person, Employee" />
+      </div>
+      <div class="form-group">
+        <label>属性</label>
+        <div class="props-editor" id="node-props-editor"></div>
+        <button class="add-prop-btn" onclick="addPropRow('node-props-editor')">＋ 添加属性</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('node-modal')">取消</button>
+      <button class="btn primary" id="node-modal-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edge modal ──────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="edge-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="edge-modal-title">新建关系</div>
+      <button class="modal-close" onclick="closeModal('edge-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>关系类型</label>
+        <input type="text" id="edge-type" placeholder="例: KNOWS, WORKS_AT" list="rel-types-list" />
+        <datalist id="rel-types-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label>属性</label>
+        <div class="props-editor" id="edge-props-editor"></div>
+        <button class="add-prop-btn" onclick="addPropRow('edge-props-editor')">＋ 添加属性</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edge-modal')">取消</button>
+      <button class="btn primary" id="edge-modal-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast container ─────────────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000/api';
+
+// ── Color palette ─────────────────────────────────────────────────────────────
+const PALETTE = [
+  '#4C8EDA','#DA4C4C','#4CDA7A','#DAB44C',
+  '#9B4CDA','#4CDADA','#DA4C9B','#DA8E4C',
+  '#6EDAA0','#A04CDA','#4CA8DA','#DA6E4C',
+];
+const labelColorMap = {};
+let colorIdx = 0;
+function getLabelColor(label) {
+  if (!labelColorMap[label]) {
+    labelColorMap[label] = PALETTE[colorIdx++ % PALETTE.length];
+  }
+  return labelColorMap[label];
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let network = null;
+let visNodes = new vis.DataSet();
+let visEdges = new vis.DataSet();
+let selectedNodeIds = [];
+let selectedEdgeIds = [];
+let pendingEdgeCallback = null;
+let pendingNodeCallback = null;
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  try {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const resp = await fetch(API + path, opts);
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(err || resp.statusText);
+    }
+    return await resp.json();
+  } catch (e) {
+    toast('❌ ' + e.message, 'err');
+    throw e;
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Node display ──────────────────────────────────────────────────────────────
+function nodeLabel(n) {
+  const p = n.properties || {};
+  const name = p.name || p.title || p.label || p.id || p.code || p.key;
+  if (name) return String(name).slice(0, 30);
+  const keys = Object.keys(p);
+  if (keys.length) return String(p[keys[0]]).slice(0, 20);
+  return (n.labels && n.labels[0]) || 'Node';
+}
+
+function makeVisNode(n) {
+  const color = getLabelColor(n.labels[0] || 'Node');
+  return {
+    id: n.id,
+    label: nodeLabel(n),
+    title: formatTooltip(n.labels, n.properties),
+    color: {
+      background: color,
+      border: color,
+      highlight: { background: color, border: '#fff' },
+    },
+    font: { color: '#fff', size: 12, face: 'sans-serif' },
+    borderWidth: 2,
+    _data: n,
+  };
+}
+
+function makeVisEdge(e) {
+  return {
+    id: e.id,
+    from: e.source,
+    to: e.target,
+    label: e.type,
+    arrows: 'to',
+    color: { color: '#8b949e', highlight: '#58a6ff' },
+    font: { color: '#8b949e', size: 11, align: 'middle' },
+    smooth: { type: 'curvedCW', roundness: 0.1 },
+    _data: e,
+  };
+}
+
+function formatTooltip(labels, props) {
+  const entries = Object.entries(props || {});
+  const propsHtml = entries.map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>');
+  return `<div style="max-width:200px"><b>[${(labels||[]).join(', ')}]</b><br>${propsHtml}</div>`;
+}
+
+// ── Build network ─────────────────────────────────────────────────────────────
+function initNetwork() {
+  const container = document.getElementById('graph-canvas');
+  const options = {
+    nodes: {
+      shape: 'dot',
+      size: 20,
+      borderWidth: 2,
+      shadow: { enabled: true, color: 'rgba(0,0,0,.4)', size: 8 },
+    },
+    edges: {
+      width: 1.5,
+      shadow: false,
+      selectionWidth: 3,
+    },
+    physics: {
+      enabled: true,
+      barnesHut: {
+        gravitationalConstant: -8000,
+        springLength: 120,
+        springConstant: 0.04,
+        damping: 0.09,
+      },
+      stabilization: { iterations: 150, updateInterval: 20 },
+    },
+    interaction: {
+      hover: true,
+      tooltipDelay: 300,
+      multiselect: true,
+      selectConnectedEdges: false,
+    },
+    manipulation: { enabled: false },
+  };
+
+  network = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
+
+  network.on('selectNode', onSelectNode);
+  network.on('selectEdge', onSelectEdge);
+  network.on('deselectNode', onDeselect);
+  network.on('deselectEdge', onDeselect);
+  network.on('doubleClick', onDoubleClick);
+  network.on('stabilizationIterationsDone', () => {
+    network.setOptions({ physics: { enabled: false } });
+  });
+
+  updateEmptyState();
+}
+
+// ── Load graph ────────────────────────────────────────────────────────────────
+async function loadGraph(labelFilter = '') {
+  const url = labelFilter ? `/graph?label=${encodeURIComponent(labelFilter)}&limit=300` : '/graph?limit=300';
+  const data = await api('GET', url);
+
+  visNodes.clear();
+  visEdges.clear();
+
+  if (data.nodes.length) {
+    visNodes.add(data.nodes.map(makeVisNode));
+  }
+  if (data.edges.length) {
+    visEdges.add(data.edges.map(makeVisEdge));
+  }
+
+  network.setOptions({ physics: { enabled: true } });
+  setTimeout(() => network.setOptions({ physics: { enabled: false } }), 3000);
+
+  updateStats();
+  updateEmptyState();
+  toast(`✅ 已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
+  refreshLabels();
+}
+
+// ── Stats & labels ────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-nodes').textContent = visNodes.length;
+  document.getElementById('stat-edges').textContent = visEdges.length;
+}
+
+function updateEmptyState() {
+  document.getElementById('empty-state').classList.toggle('hidden', visNodes.length > 0);
+}
+
+async function refreshLabels() {
+  try {
+    const labels = await api('GET', '/labels');
+    const list = document.getElementById('label-list');
+    list.innerHTML = '';
+    labels.forEach(lbl => {
+      const color = getLabelColor(lbl);
+      const item = document.createElement('div');
+      item.className = 'label-item';
+      item.innerHTML = `
+        <div class="label-dot" style="background:${color}"></div>
+        <span class="label-name">${lbl}</span>
+      `;
+      item.onclick = () => loadGraph(lbl);
+      list.appendChild(item);
+    });
+    if (!labels.length) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">暂无标签</div>';
+    }
+  } catch {}
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+function onSelectNode(params) {
+  selectedNodeIds = params.nodes;
+  selectedEdgeIds = [];
+  if (params.nodes.length === 1) {
+    const n = visNodes.get(params.nodes[0]);
+    if (n) showNodeInspector(n._data);
+  } else if (params.nodes.length > 1) {
+    showMultiInspector(params.nodes.length, 0);
+  }
+}
+
+function onSelectEdge(params) {
+  selectedEdgeIds = params.edges;
+  selectedNodeIds = [];
+  if (params.edges.length === 1) {
+    const e = visEdges.get(params.edges[0]);
+    if (e) showEdgeInspector(e._data);
+  }
+}
+
+function onDeselect() {
+  selectedNodeIds = [];
+  selectedEdgeIds = [];
+  hideInspector();
+}
+
+// ── Inspector ─────────────────────────────────────────────────────────────────
+function showNodeInspector(n) {
+  const color = getLabelColor(n.labels[0] || 'Node');
+  document.getElementById('inspector-icon').textContent = '📦';
+  document.getElementById('inspector-title').textContent = nodeLabel(n);
+
+  const body = document.getElementById('inspector-body');
+  const footer = document.getElementById('inspector-footer');
+
+  const labelTags = (n.labels || []).map(l =>
+    `<span class="tag" style="background:${getLabelColor(l)}22;color:${getLabelColor(l)};border:1px solid ${getLabelColor(l)}44">${l}</span>`
+  ).join('');
+
+  const propsHtml = Object.entries(n.properties || {}).map(([k, v]) => `
+    <div class="prop-row">
+      <div class="prop-key">${k}</div>
+      <div class="prop-val">${v}</div>
+    </div>
+  `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
+
+  body.innerHTML = `
+    <div class="prop-section">
+      <div class="prop-section-title">标签</div>
+      <div class="tag-list">${labelTags}</div>
+    </div>
+    <div class="prop-section">
+      <div class="prop-section-title">属性</div>
+      ${propsHtml}
+    </div>
+    <div class="prop-section">
+      <div class="prop-section-title">ID</div>
+      <div class="prop-val" style="font-size:11px;word-break:break-all">${n.id}</div>
+    </div>
+  `;
+
+  footer.innerHTML = `
+    <button class="btn" onclick="openEditNodeModal('${n.id}')">✏️ 编辑</button>
+    <button class="btn danger" onclick="deleteNode('${n.id}')">🗑 删除</button>
+  `;
+
+  document.getElementById('inspector').classList.remove('hidden');
+}
+
+function showEdgeInspector(e) {
+  document.getElementById('inspector-icon').textContent = '🔗';
+  document.getElementById('inspector-title').textContent = e.type;
+
+  const body = document.getElementById('inspector-body');
+  const footer = document.getElementById('inspector-footer');
+
+  const propsHtml = Object.entries(e.properties || {}).map(([k, v]) => `
+    <div class="prop-row">
+      <div class="prop-key">${k}</div>
+      <div class="prop-val">${v}</div>
+    </div>
+  `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
+
+  body.innerHTML = `
+    <div class="prop-section">
+      <div class="prop-section-title">关系类型</div>
+      <span class="tag" style="background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff44">${e.type}</span>
+    </div>
+    <div class="prop-section">
+      <div class="prop-section-title">属性</div>
+      ${propsHtml}
+    </div>
+  `;
+
+  footer.innerHTML = `
+    <button class="btn" onclick="openEditEdgeModal('${e.id}')">✏️ 编辑</button>
+    <button class="btn danger" onclick="deleteEdge('${e.id}')">🗑 删除</button>
+  `;
+
+  document.getElementById('inspector').classList.remove('hidden');
+}
+
+function showMultiInspector(nodeCount, edgeCount) {
+  document.getElementById('inspector-icon').textContent = '☰';
+  document.getElementById('inspector-title').textContent = '多选';
+  document.getElementById('inspector-body').innerHTML = `
+    <div style="color:var(--text-muted);font-size:13px;padding:8px 0;">
+      已选中 ${nodeCount} 个节点
+    </div>`;
+  document.getElementById('inspector-footer').innerHTML = `
+    <button class="btn danger" onclick="deleteSelected()">🗑 批量删除</button>`;
+  document.getElementById('inspector').classList.remove('hidden');
+}
+
+function hideInspector() {
+  document.getElementById('inspector').classList.add('hidden');
+}
+
+// ── Double click edit ─────────────────────────────────────────────────────────
+function onDoubleClick(params) {
+  if (params.nodes.length === 1) {
+    openEditNodeModal(params.nodes[0]);
+  } else if (params.edges.length === 1) {
+    openEditEdgeModal(params.edges[0]);
+  }
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+  if (id === 'node-modal' && pendingNodeCallback) {
+    pendingNodeCallback(null);
+    pendingNodeCallback = null;
+  }
+  if (id === 'edge-modal' && pendingEdgeCallback) {
+    pendingEdgeCallback(null);
+    pendingEdgeCallback = null;
+  }
+}
+
+function addPropRow(editorId, key = '', val = '') {
+  const editor = document.getElementById(editorId);
+  const row = document.createElement('div');
+  row.className = 'prop-edit-row';
+  row.innerHTML = `
+    <input type="text" placeholder="键" value="${key}" class="prop-key-input" />
+    <input type="text" placeholder="值" value="${val}" class="prop-val-input" />
+    <button class="prop-del-btn" onclick="this.parentElement.remove()">×</button>
+  `;
+  editor.appendChild(row);
+}
+
+function collectProps(editorId) {
+  const props = {};
+  document.querySelectorAll(`#${editorId} .prop-edit-row`).forEach(row => {
+    const k = row.querySelector('.prop-key-input').value.trim();
+    const v = row.querySelector('.prop-val-input').value.trim();
+    if (k) props[k] = v;
+  });
+  return props;
+}
+
+function clearPropsEditor(editorId) {
+  document.getElementById(editorId).innerHTML = '';
+}
+
+// ── Create node ───────────────────────────────────────────────────────────────
+function openCreateNodeModal() {
+  document.getElementById('node-modal-title').textContent = '新建节点';
+  document.getElementById('node-labels').value = '';
+  clearPropsEditor('node-props-editor');
+  addPropRow('node-props-editor', 'name', '');
+  document.getElementById('node-modal').classList.remove('hidden');
+  document.getElementById('node-modal-save').onclick = saveNewNode;
+  document.getElementById('node-labels').focus();
+}
+
+async function saveNewNode() {
+  const labelsRaw = document.getElementById('node-labels').value.trim();
+  const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
+  const properties = collectProps('node-props-editor');
+
+  try {
+    const n = await api('POST', '/nodes', { labels, properties });
+    const visNode = makeVisNode(n);
+    visNodes.add(visNode);
+    updateStats();
+    updateEmptyState();
+    closeModal('node-modal');
+    toast('✅ 节点已创建');
+    refreshLabels();
+    setTimeout(() => {
+      network.selectNodes([n.id]);
+      network.focus(n.id, { animation: true, scale: 1.2 });
+      showNodeInspector(n);
+    }, 100);
+  } catch {}
+}
+
+// ── Edit node ─────────────────────────────────────────────────────────────────
+async function openEditNodeModal(nodeId) {
+  const visNode = visNodes.get(nodeId);
+  if (!visNode) return;
+  const n = visNode._data;
+
+  document.getElementById('node-modal-title').textContent = '编辑节点';
+  document.getElementById('node-labels').value = (n.labels || []).join(', ');
+  clearPropsEditor('node-props-editor');
+  Object.entries(n.properties || {}).forEach(([k, v]) => addPropRow('node-props-editor', k, v));
+
+  document.getElementById('node-modal').classList.remove('hidden');
+  document.getElementById('node-modal-save').onclick = () => saveEditNode(nodeId);
+}
+
+async function saveEditNode(nodeId) {
+  const labelsRaw = document.getElementById('node-labels').value.trim();
+  const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
+  const properties = collectProps('node-props-editor');
+
+  try {
+    const n = await api('PUT', `/nodes/${nodeId}`, { labels, properties });
+    visNodes.update(makeVisNode(n));
+    closeModal('node-modal');
+    toast('✅ 节点已更新');
+    showNodeInspector(n);
+    refreshLabels();
+  } catch {}
+}
+
+// ── Delete node ───────────────────────────────────────────────────────────────
+async function deleteNode(nodeId) {
+  if (!confirm('确定删除这个节点及其所有关系吗？')) return;
+  try {
+    await api('DELETE', `/nodes/${nodeId}`);
+    visNodes.remove(nodeId);
+    // Remove connected edges from vis
+    const connectedEdges = network.getConnectedEdges(nodeId);
+    visEdges.remove(connectedEdges);
+    hideInspector();
+    updateStats();
+    updateEmptyState();
+    toast('✅ 节点已删除');
+    refreshLabels();
+  } catch {}
+}
+
+async function deleteSelected() {
+  if (!selectedNodeIds.length) return;
+  if (!confirm(`确定删除选中的 ${selectedNodeIds.length} 个节点吗？`)) return;
+  try {
+    for (const id of selectedNodeIds) {
+      await api('DELETE', `/nodes/${id}`);
+      const connectedEdges = network.getConnectedEdges(id);
+      visEdges.remove(connectedEdges);
+    }
+    visNodes.remove(selectedNodeIds);
+    hideInspector();
+    updateStats();
+    updateEmptyState();
+    toast(`✅ 已删除 ${selectedNodeIds.length} 个节点`);
+    refreshLabels();
+  } catch {}
+}
+
+// ── Create edge ───────────────────────────────────────────────────────────────
+function openCreateEdgeModal() {
+  if (selectedNodeIds.length !== 2) {
+    toast('⚠️ 请先选中两个节点（按住 Ctrl 多选）', 'err');
+    return;
+  }
+  document.getElementById('edge-modal-title').textContent = '新建关系';
+  document.getElementById('edge-type').value = '';
+  clearPropsEditor('edge-props-editor');
+  document.getElementById('edge-modal').classList.remove('hidden');
+  document.getElementById('edge-modal-save').onclick = () => saveNewEdge(selectedNodeIds[0], selectedNodeIds[1]);
+  document.getElementById('edge-type').focus();
+  loadRelTypes();
+}
+
+async function loadRelTypes() {
+  try {
+    const types = await api('GET', '/relationship-types');
+    const dl = document.getElementById('rel-types-list');
+    dl.innerHTML = types.map(t => `<option value="${t}">`).join('');
+  } catch {}
+}
+
+async function saveNewEdge(sourceId, targetId) {
+  const type = document.getElementById('edge-type').value.trim().toUpperCase() || 'RELATES_TO';
+  const properties = collectProps('edge-props-editor');
+
+  try {
+    const e = await api('POST', '/relationships/by-element-id?' +
+      new URLSearchParams({ source_element_id: sourceId, target_element_id: targetId, type }));
+    visEdges.add(makeVisEdge(e));
+    updateStats();
+    closeModal('edge-modal');
+    toast('✅ 关系已创建');
+  } catch {}
+}
+
+// ── Edit edge ─────────────────────────────────────────────────────────────────
+async function openEditEdgeModal(edgeId) {
+  const visEdge = visEdges.get(edgeId);
+  if (!visEdge) return;
+  const e = visEdge._data;
+
+  document.getElementById('edge-modal-title').textContent = '编辑关系';
+  document.getElementById('edge-type').value = e.type || '';
+  clearPropsEditor('edge-props-editor');
+  Object.entries(e.properties || {}).forEach(([k, v]) => addPropRow('edge-props-editor', k, v));
+
+  document.getElementById('edge-modal').classList.remove('hidden');
+  document.getElementById('edge-modal-save').onclick = () => saveEditEdge(edgeId);
+  loadRelTypes();
+}
+
+async function saveEditEdge(edgeId) {
+  const properties = collectProps('edge-props-editor');
+
+  try {
+    const e = await api('PUT', `/relationships/${edgeId}`, { properties });
+    visEdges.update(makeVisEdge(e));
+    closeModal('edge-modal');
+    toast('✅ 关系已更新');
+    showEdgeInspector(e);
+  } catch {}
+}
+
+// ── Delete edge ───────────────────────────────────────────────────────────────
+async function deleteEdge(edgeId) {
+  if (!confirm('确定删除这条关系吗？')) return;
+  try {
+    await api('DELETE', `/relationships/${edgeId}`);
+    visEdges.remove(edgeId);
+    hideInspector();
+    updateStats();
+    toast('✅ 关系已删除');
+  } catch {}
+}
+
+// ── Delete selected (keyboard) ────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    if (selectedNodeIds.length) deleteSelected();
+    else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
+  }
+  if (e.key === 'Escape') {
+    closeModal('node-modal');
+    closeModal('edge-modal');
+  }
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+let searchTimer;
+document.getElementById('search-input').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (!q) {
+    document.getElementById('search-results').classList.add('hidden');
+    return;
+  }
+  searchTimer = setTimeout(() => doSearch(q), 300);
+});
+
+document.getElementById('search-input').addEventListener('blur', () => {
+  setTimeout(() => document.getElementById('search-results').classList.add('hidden'), 200);
+});
+
+async function doSearch(q) {
+  try {
+    const results = await api('GET', `/search?q=${encodeURIComponent(q)}&limit=20`);
+    const el = document.getElementById('search-results');
+    if (!results.length) {
+      el.innerHTML = '<div class="search-result-item" style="color:var(--text-muted)">无结果</div>';
+    } else {
+      el.innerHTML = results.map(n => {
+        const color = getLabelColor(n.labels[0] || 'Node');
+        return `
+          <div class="search-result-item" onclick="focusNode('${n.id}')">
+            <span class="result-label-tag" style="background:${color}33;color:${color}">${n.labels[0] || 'Node'}</span>
+            <span class="result-name">${nodeLabel(n)}</span>
+          </div>`;
+      }).join('');
+    }
+    el.classList.remove('hidden');
+  } catch {}
+}
+
+async function focusNode(nodeId) {
+  document.getElementById('search-results').classList.add('hidden');
+  document.getElementById('search-input').value = '';
+
+  // If node not in canvas, load its neighbors
+  if (!visNodes.get(nodeId)) {
+    try {
+      const data = await api('GET', `/node-neighbors/${nodeId}`);
+      const newNodes = data.nodes.filter(n => !visNodes.get(n.id));
+      const newEdges = data.edges.filter(e => !visEdges.get(e.id));
+      if (newNodes.length) visNodes.add(newNodes.map(makeVisNode));
+      if (newEdges.length) visEdges.add(newEdges.map(makeVisEdge));
+      updateStats();
+      updateEmptyState();
+    } catch {}
+  }
+
+  if (visNodes.get(nodeId)) {
+    network.selectNodes([nodeId]);
+    network.focus(nodeId, { animation: { duration: 500 }, scale: 1.3 });
+    const n = visNodes.get(nodeId);
+    if (n) showNodeInspector(n._data);
+  }
+}
+
+// ── Expand neighbors ──────────────────────────────────────────────────────────
+document.getElementById('btn-expand').onclick = async () => {
+  if (!selectedNodeIds.length) {
+    toast('⚠️ 请先选中一个节点', 'err');
+    return;
+  }
+  try {
+    for (const nodeId of selectedNodeIds) {
+      const data = await api('GET', `/node-neighbors/${nodeId}`);
+      const newNodes = data.nodes.filter(n => !visNodes.get(n.id));
+      const newEdges = data.edges.filter(e => !visEdges.get(e.id));
+      if (newNodes.length) visNodes.add(newNodes.map(makeVisNode));
+      if (newEdges.length) visEdges.add(newEdges.map(makeVisEdge));
+    }
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2000);
+    updateStats();
+    updateEmptyState();
+    toast('✅ 邻居节点已展开');
+  } catch {}
+};
+
+// ── Status check ──────────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const s = await fetch(API + '/status').then(r => r.json());
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+    if (s.connected) {
+      dot.className = 'status-dot ok';
+      txt.textContent = '已连接';
+    } else {
+      dot.className = 'status-dot err';
+      txt.textContent = '未连接';
+    }
+  } catch {
+    document.getElementById('status-dot').className = 'status-dot err';
+    document.getElementById('status-text').textContent = '服务不可用';
+  }
+}
+
+// ── Button bindings ───────────────────────────────────────────────────────────
+document.getElementById('btn-load').onclick = () => loadGraph();
+document.getElementById('btn-add-node').onclick = openCreateNodeModal;
+document.getElementById('btn-add-edge').onclick = openCreateEdgeModal;
+document.getElementById('btn-delete').onclick = () => {
+  if (selectedNodeIds.length) deleteSelected();
+  else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
+  else toast('⚠️ 请先选中要删除的元素', 'err');
+};
+document.getElementById('btn-fit').onclick = () => network.fit({ animation: true });
+document.getElementById('btn-layout').onclick = () => {
+  network.setOptions({ physics: { enabled: true } });
+  setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2500);
+};
+document.getElementById('btn-zoom-in').onclick = () => network.moveTo({ scale: network.getScale() * 1.3, animation: true });
+document.getElementById('btn-zoom-out').onclick = () => network.moveTo({ scale: network.getScale() * 0.77, animation: true });
+document.getElementById('inspector-close').onclick = () => {
+  hideInspector();
+  network.unselectAll();
+};
+
+// Close modal when clicking overlay
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeModal(overlay.id);
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initNetwork();
+checkStatus();
+refreshLabels();
+setInterval(checkStatus, 30000);
+</script>
+</body>
+</html>
