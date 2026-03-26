@@ -228,39 +228,6 @@
       height: 100%;
     }
 
-    /* ── Cursor overlay ── */
-    #cursor-overlay {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      overflow: hidden;
-      z-index: 10;
-    }
-    .remote-cursor {
-      position: absolute;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-      pointer-events: none;
-      transition: left .05s linear, top .05s linear;
-    }
-    .remote-cursor-arrow {
-      width: 0; height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 12px solid currentColor;
-      transform: rotate(-30deg) translate(-2px, -2px);
-    }
-    .remote-cursor-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
-      white-space: nowrap;
-    }
-
     .canvas-hint {
       position: absolute;
       bottom: 16px;
@@ -758,7 +725,6 @@
   <!-- Graph canvas -->
   <div class="canvas-wrap">
     <div id="graph-canvas"></div>
-    <div id="cursor-overlay"></div>
 
     <div id="empty-state" class="empty-state">
       <div class="empty-icon">🕸️</div>
@@ -856,7 +822,6 @@ const lockedEntities = new Map();  // entity_id -> { user_id, username, color }
 const lockCallbacks  = new Map();  // entity_id -> resolve fn (Promise)
 let currentEditingNodeId = null;
 let currentEditingEdgeId = null;
-let lastCursorSend   = 0;
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -940,6 +905,7 @@ function onLoginSuccess(data) {
   initNetwork();
   checkStatus();
   refreshLabels();
+  loadGraph();
   setInterval(checkStatus, 30000);
 }
 
@@ -1071,12 +1037,7 @@ function handleWSMessage(msg) {
       const u = onlineUsers.get(msg.user_id);
       if (u) { toast(`👤 ${u.username} 离开了编辑`); }
       onlineUsers.delete(msg.user_id);
-      removeCursor(msg.user_id);
       renderOnlineUsers();
-      break;
-
-    case 'cursor_move':
-      updateCursor(msg.user_id, msg.x, msg.y);
       break;
 
     case 'lock_result': {
@@ -1216,50 +1177,6 @@ function refreshInspectorLock(entityId, locked, username = '') {
   }
 }
 
-// ── Cursor rendering ──────────────────────────────────────────────────────────
-const cursorEls = {};  // user_id -> DOM element
-
-function updateCursor(userId, canvasX, canvasY) {
-  if (!network) return;
-  const user = onlineUsers.get(userId);
-  if (!user) return;
-  const domPos = network.canvasToDOM({ x: canvasX, y: canvasY });
-
-  let el = cursorEls[userId];
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'remote-cursor';
-    el.innerHTML = `
-      <div class="remote-cursor-arrow" style="color:${user.color}"></div>
-      <div class="remote-cursor-label" style="background:${user.color}">${user.username}</div>
-    `;
-    document.getElementById('cursor-overlay').appendChild(el);
-    cursorEls[userId] = el;
-  }
-  el.style.left = domPos.x + 'px';
-  el.style.top  = domPos.y + 'px';
-}
-
-function removeCursor(userId) {
-  const el = cursorEls[userId];
-  if (el) { el.remove(); delete cursorEls[userId]; }
-}
-
-// Refresh cursor DOM positions on zoom/pan
-function refreshAllCursors() {
-  if (!network) return;
-  onlineUsers.forEach((user, userId) => {
-    const el = cursorEls[userId];
-    if (!el) return;
-    // cursor positions are stored per-element as data attributes
-    const cx = parseFloat(el.dataset.cx || 0);
-    const cy = parseFloat(el.dataset.cy || 0);
-    const domPos = network.canvasToDOM({ x: cx, y: cy });
-    el.style.left = domPos.x + 'px';
-    el.style.top  = domPos.y + 'px';
-  });
-}
-
 // ── Online users panel ────────────────────────────────────────────────────────
 function renderOnlineUsers() {
   const container = document.getElementById('online-users');
@@ -1355,21 +1272,6 @@ function initNetwork() {
   network.on('deselectEdge', onDeselect);
   network.on('doubleClick', onDoubleClick);
   network.on('stabilizationIterationsDone', () => network.setOptions({ physics: { enabled: false } }));
-  network.on('zoom', refreshAllCursors);
-  network.on('dragEnd', refreshAllCursors);
-
-  // Mouse move → send cursor position
-  container.addEventListener('mousemove', (e) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const now = Date.now();
-    if (now - lastCursorSend < 50) return;
-    lastCursorSend = now;
-    const rect = container.getBoundingClientRect();
-    const domPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    const canvasPos = network.DOMtoCanvas(domPos);
-    wsSend({ type: 'cursor_move', x: canvasPos.x, y: canvasPos.y });
-  });
-
   updateEmptyState();
 }
 
@@ -1888,6 +1790,7 @@ async function init() {
     initNetwork();
     checkStatus();
     refreshLabels();
+    loadGraph();
     setInterval(checkStatus, 30000);
   } catch {
     // Server might be starting up — stay on overlay

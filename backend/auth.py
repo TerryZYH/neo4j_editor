@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -13,7 +13,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production-please")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 7  # 1 week
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 security = HTTPBearer()
 DB_PATH = Path(__file__).parent / "users.db"
 
@@ -60,7 +60,7 @@ def count_users() -> int:
 # ── JWT ────────────────────────────────────────────────────────────────────────
 
 def create_token(user_id: int, username: str, role: str) -> str:
-    expire = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
     return jwt.encode(
         {"sub": str(user_id), "username": username, "role": role, "exp": expire},
         SECRET_KEY, algorithm=ALGORITHM,

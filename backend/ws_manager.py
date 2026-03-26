@@ -1,6 +1,6 @@
 from fastapi import WebSocket
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 LOCK_TTL_SECONDS = 60  # Auto-release locks after 60s of inactivity
 
@@ -69,7 +69,7 @@ class WSManager:
     # ── Lock management ────────────────────────────────────────────────────────
 
     def _purge_expired(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = [
             eid for eid, lk in list(self._locks.items())
             if (now - datetime.fromisoformat(lk["locked_at"])).total_seconds() > LOCK_TTL_SECONDS
@@ -88,7 +88,7 @@ class WSManager:
             "user_id": user_id,
             "username": username,
             "color": self._color(user_id),
-            "locked_at": datetime.utcnow().isoformat(),
+            "locked_at": datetime.now(timezone.utc).isoformat(),
         }
         return True
 
@@ -104,7 +104,7 @@ class WSManager:
 
     def heartbeat(self, user_id: str):
         """Refresh TTL for all locks held by this user."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         for lk in self._locks.values():
             if lk["user_id"] == user_id:
                 lk["locked_at"] = now

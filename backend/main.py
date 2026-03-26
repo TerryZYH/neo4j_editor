@@ -104,14 +104,7 @@ async def ws_endpoint(websocket: WebSocket, token: str = ""):
             data = await websocket.receive_json()
             t = data.get("type", "")
 
-            if t == "cursor_move":
-                await manager.broadcast(
-                    {"type": "cursor_move", "user_id": user_id,
-                     "x": data.get("x", 0), "y": data.get("y", 0)},
-                    exclude=user_id,
-                )
-
-            elif t == "lock_entity":
+            if t == "lock_entity":
                 eid = data.get("entity_id", "")
                 ok = manager.try_lock(eid, user_id, username)
                 lk = manager.get_lock(eid)
@@ -150,7 +143,7 @@ async def ws_endpoint(websocket: WebSocket, token: str = ""):
 async def get_graph(
     label: Optional[str] = None,
     limit: int = Query(200, le=1000),
-    user=Depends(get_current_user),
+    _=Depends(get_current_user),
 ):
     drv = get_driver()
     with drv.session() as session:
@@ -203,7 +196,7 @@ async def create_node(node: NodeCreate, user=Depends(get_current_user)):
 
 
 @app.get("/api/nodes/{node_id}")
-async def get_node(node_id: str, user=Depends(get_current_user)):
+async def get_node(node_id: str, _=Depends(get_current_user)):
     drv = get_driver()
     with drv.session() as session:
         result = session.run("MATCH (n) WHERE elementId(n) = $id RETURN n", id=node_id)
@@ -356,7 +349,7 @@ async def delete_relationship(rel_id: str, user=Depends(get_current_user)):
 # ── Search & Metadata ─────────────────────────────────────────────────────────
 
 @app.get("/api/search")
-async def search_nodes(q: str, limit: int = Query(50, le=200), user=Depends(get_current_user)):
+async def search_nodes(q: str, limit: int = Query(50, le=200), _=Depends(get_current_user)):
     drv = get_driver()
     with drv.session() as session:
         result = session.run(
@@ -368,7 +361,7 @@ async def search_nodes(q: str, limit: int = Query(50, le=200), user=Depends(get_
 
 
 @app.get("/api/labels")
-async def get_labels(user=Depends(get_current_user)):
+async def get_labels(_=Depends(get_current_user)):
     drv = get_driver()
     with drv.session() as session:
         result = session.run("CALL db.labels() YIELD label RETURN label ORDER BY label")
@@ -376,7 +369,7 @@ async def get_labels(user=Depends(get_current_user)):
 
 
 @app.get("/api/relationship-types")
-async def get_rel_types(user=Depends(get_current_user)):
+async def get_rel_types(_=Depends(get_current_user)):
     drv = get_driver()
     with drv.session() as session:
         result = session.run(
@@ -387,7 +380,7 @@ async def get_rel_types(user=Depends(get_current_user)):
 
 
 @app.get("/api/node-neighbors/{node_id}")
-async def get_neighbors(node_id: str, limit: int = 50, user=Depends(get_current_user)):
+async def get_neighbors(node_id: str, limit: int = 50, _=Depends(get_current_user)):
     drv = get_driver()
     with drv.session() as session:
         result = session.run(
