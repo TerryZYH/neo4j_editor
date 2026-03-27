@@ -12,6 +12,10 @@ from auth import init_db, get_current_user, decode_token, router as auth_router
 from ws_manager import manager
 from admin import router as admin_router
 from schemas import init_schema_db, router as schemas_router
+from ontology import (
+    init_ontology_db, router as ontology_router,
+    get_validation_mode, validate_node_labels, validate_relation_triple,
+)
 
 load_dotenv()
 
@@ -25,9 +29,11 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(schemas_router)
+app.include_router(ontology_router)
 
 init_db()
 init_schema_db()
+init_ontology_db()
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
@@ -179,8 +185,23 @@ async def get_graph(
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
+def _check_labels(labels: list):
+    """Validate labels against ontology; raise 422 in strict mode."""
+    valid, msg = validate_node_labels(labels)
+    if not valid and get_validation_mode() == "strict":
+        raise HTTPException(422, f"[本体校验] {msg}")
+    return valid, msg
+
+def _check_triple(src_labels: list, rel_type: str, tgt_labels: list):
+    valid, msg = validate_relation_triple(src_labels, rel_type, tgt_labels)
+    if not valid and get_validation_mode() == "strict":
+        raise HTTPException(422, f"[本体校验] {msg}")
+    return valid, msg
+
+
 @app.post("/api/nodes", status_code=201)
 async def create_node(node: NodeCreate, user=Depends(get_current_user)):
+    _check_labels(node.labels)
     drv = get_driver()
     labels_str = ":".join(f"`{l}`" for l in node.labels) if node.labels else "Node"
     with drv.session() as session:
@@ -214,6 +235,8 @@ async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_u
     lk = manager.get_lock(node_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该节点正在被 {lk['username']} 编辑")
+    if node.labels:
+        _check_labels(node.labels)
 
     drv = get_driver()
     with drv.session() as session:
@@ -292,6 +315,13 @@ async def create_relationship_by_element_id(
     drv = get_driver()
     rel_type = type.replace("`", "")
     with drv.session() as session:
+        # Fetch source/target labels for ontology validation
+        src_rec = session.run("MATCH (n) WHERE elementId(n)=$id RETURN labels(n) AS lbls", id=source_element_id).single()
+        tgt_rec = session.run("MATCH (n) WHERE elementId(n)=$id RETURN labels(n) AS lbls", id=target_element_id).single()
+        src_labels = list(src_rec["lbls"]) if src_rec else []
+        tgt_labels = list(tgt_rec["lbls"]) if tgt_rec else []
+        _check_triple(src_labels, rel_type, tgt_labels)
+
         result = session.run(
             f"MATCH (a), (b) WHERE elementId(a) = $src AND elementId(b) = $tgt "
             f"CREATE (a)-[r:`{rel_type}` $props]->(b) RETURN r",

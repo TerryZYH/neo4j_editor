@@ -713,6 +713,10 @@
       <span class="role-badge" id="user-chip-role"></span>
     </div>
 
+    <!-- Ontology link -->
+    <a id="ontology-link" href="/ontology.html" target="_blank"
+       class="btn" style="display:none;text-decoration:none">🧬 本体</a>
+
     <!-- Admin link -->
     <a id="admin-link" href="/admin.html" target="_blank"
        class="btn" style="display:none;text-decoration:none">⚙️ 管理</a>
@@ -800,7 +804,8 @@
     <div class="modal-body">
       <div class="form-group">
         <label>节点标签（多个用逗号分隔）</label>
-        <input type="text" id="node-labels" placeholder="例: Person, Employee" />
+        <input type="text" id="node-labels" placeholder="例: Person, Employee" list="node-labels-list" autocomplete="off" />
+        <datalist id="node-labels-list"></datalist>
       </div>
       <div class="form-group">
         <label>属性</label>
@@ -925,6 +930,52 @@
 const API     = 'http://localhost:8000/api';
 const WS_URL  = 'ws://localhost:8000/ws';
 
+// ── Ontology cache ────────────────────────────────────────────────────────────
+let ontology = { classes: [], relations: [], validation_mode: 'warn' };
+
+async function loadOntology() {
+  try { ontology = await api('GET', '/ontology'); } catch { /* ignore */ }
+}
+
+// Get valid rel_types for a given (src_labels, tgt_labels) pair
+function getValidRelTypes(srcLabels, tgtLabels) {
+  if (!ontology.relations.length) return null; // no constraint → anything goes
+  const valid = new Set();
+  ontology.relations.forEach(r => {
+    const srcOk = r.source_label === '*' || srcLabels.some(l => l === r.source_label);
+    const tgtOk = r.target_label === '*' || tgtLabels.some(l => l === r.target_label);
+    if (srcOk && tgtOk) valid.add(r.rel_type);
+  });
+  return [...valid];
+}
+
+// Validate a node label against ontology (warn or block)
+function checkOntologyLabels(labels) {
+  if (!ontology.classes.length) return true;
+  const defined = new Set(ontology.classes.map(c => c.label_name));
+  const bad = labels.filter(l => !defined.has(l));
+  if (!bad.length) return true;
+  const msg = `标签「${bad.join(', ')}」未在本体中定义`;
+  if (ontology.validation_mode === 'strict') { toast('❌ ' + msg, 'err'); return false; }
+  toast('⚠️ ' + msg, 'err');
+  return true; // warn: allow but warn
+}
+
+// Validate a relation triple
+function checkOntologyTriple(srcLabels, relType, tgtLabels) {
+  if (!ontology.relations.length) return true;
+  const ok = ontology.relations.some(r => {
+    const srcOk = r.source_label === '*' || srcLabels.some(l => l === r.source_label);
+    const tgtOk = r.target_label === '*' || tgtLabels.some(l => l === r.target_label);
+    return srcOk && tgtOk && r.rel_type === relType;
+  });
+  if (ok) return true;
+  const msg = `关系 [${relType}] 不在本体定义的合法三元组中`;
+  if (ontology.validation_mode === 'strict') { toast('❌ ' + msg, 'err'); return false; }
+  toast('⚠️ ' + msg, 'err');
+  return true;
+}
+
 // ── Schema cache ──────────────────────────────────────────────────────────────
 let schemasCache = [];   // full list, refreshed on open
 let _schemaFilter = 'all';
@@ -1026,6 +1077,7 @@ function onLoginSuccess(data) {
   initNetwork();
   checkStatus();
   refreshLabels();
+  loadOntology();
   loadGraph();
   setInterval(checkStatus, 30000);
 }
@@ -1059,6 +1111,7 @@ function initUserUI() {
   document.getElementById('user-chip-dot').style.background = color;
   // Logout & admin
   document.getElementById('btn-logout').style.display = 'flex';
+  document.getElementById('ontology-link').style.display = 'flex';
   if (currentUser.role === 'admin') {
     document.getElementById('admin-link').style.display = 'flex';
   }
@@ -1620,6 +1673,11 @@ function clearPropsEditor(editorId) {
 async function openCreateNodeModal() {
   document.getElementById('node-modal-title').textContent = '新建节点';
   document.getElementById('node-labels').value = '';
+  // Populate datalist from ontology class definitions
+  const dl = document.getElementById('node-labels-list');
+  dl.innerHTML = ontology.classes.map(c =>
+    `<option value="${c.label_name}">${c.display_name || c.label_name}</option>`
+  ).join('');
   clearPropsEditor('node-props-editor');
   addPropRow('node-props-editor', 'name', '');
   document.getElementById('node-modal').classList.remove('hidden');
@@ -1647,6 +1705,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function saveNewNode() {
   const labelsRaw = document.getElementById('node-labels').value.trim();
   const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
+  if (!checkOntologyLabels(labels) ) return;
   const properties = collectProps('node-props-editor');
   try {
     const n = await api('POST', '/nodes', { labels, properties });
@@ -1682,6 +1741,7 @@ async function openEditNodeModal(nodeId) {
 async function saveEditNode(nodeId) {
   const labelsRaw = document.getElementById('node-labels').value.trim();
   const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
+  if (!checkOntologyLabels(labels)) return;
   const properties = collectProps('node-props-editor');
   try {
     const n = await api('PUT', `/nodes/${nodeId}`, { labels, properties });
@@ -1734,10 +1794,24 @@ async function openCreateEdgeModal() {
   document.getElementById('edge-modal-title').textContent = '新建关系';
   await loadSchemasCache();
   await loadRelTypes();
+
+  // Determine valid rel_types from ontology based on selected node labels
+  const srcNode = visNodes.get(selectedNodeIds[0]);
+  const tgtNode = visNodes.get(selectedNodeIds[1]);
+  const srcLabels = srcNode ? (srcNode._data.labels || []) : [];
+  const tgtLabels = tgtNode ? (tgtNode._data.labels || []) : [];
+  const validTypes = getValidRelTypes(srcLabels, tgtLabels);
+
+  // validTypes === null means no ontology constraints → use all known types
+  if (validTypes !== null) {
+    window._cachedRelTypes = validTypes.length ? validTypes : (window._cachedRelTypes || []);
+    if (!validTypes.length) toast('⚠️ 本体中没有这两类节点之间允许的关系类型', 'err');
+  }
+
   setupEdgeTypeField('');
   clearPropsEditor('edge-props-editor');
   document.getElementById('edge-modal').classList.remove('hidden');
-  document.getElementById('edge-modal-save').onclick = () => saveNewEdge(selectedNodeIds[0], selectedNodeIds[1]);
+  document.getElementById('edge-modal-save').onclick = () => saveNewEdge(selectedNodeIds[0], selectedNodeIds[1], srcLabels, tgtLabels);
 }
 
 async function loadRelTypes() {
@@ -1748,9 +1822,10 @@ async function loadRelTypes() {
   } catch {}
 }
 
-async function saveNewEdge(sourceId, targetId) {
+async function saveNewEdge(sourceId, targetId, srcLabels = [], tgtLabels = []) {
   const typeEl = document.getElementById('edge-type');
   const type = (typeEl ? typeEl.value.trim().toUpperCase() : '') || 'RELATES_TO';
+  if (!checkOntologyTriple(srcLabels, type, tgtLabels)) return;
   const properties = collectProps('edge-props-editor');
   try {
     const e = await api('POST', '/relationships/by-element-id?' +
@@ -2207,6 +2282,7 @@ async function init() {
     initNetwork();
     checkStatus();
     refreshLabels();
+    loadOntology();
     loadGraph();
     setInterval(checkStatus, 30000);
   } catch {

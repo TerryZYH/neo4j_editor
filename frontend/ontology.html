@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>本体管理 · Neo4j Editor</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --border: #30363d;
+      --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff; --accent-hover: #79c0ff;
+      --danger: #f85149; --success: #56d364; --warning: #e3b341; --radius: 8px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; min-height: 100vh; }
+
+    /* ── Header ── */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; }
+    .back-link { color: var(--text-muted); text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 6px; transition: color .15s; }
+    .back-link:hover { color: var(--text); }
+    .page-title { font-size: 16px; font-weight: 600; color: var(--accent); }
+    .mode-badge { margin-left: auto; font-size: 12px; padding: 3px 10px; border-radius: 12px; font-weight: 600; }
+    .mode-badge.warn   { background: #e3b34122; color: var(--warning); border: 1px solid #e3b34144; }
+    .mode-badge.strict { background: #f8514922; color: var(--danger);  border: 1px solid #f8514944; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 0; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .tab { padding: 12px 20px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; user-select: none; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Content ── */
+    .tab-content { display: none; padding: 24px; max-width: 960px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* ── Toolbar ── */
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .toolbar-title { font-size: 15px; font-weight: 600; }
+    .toolbar-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Buttons ── */
+    .btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 6px 14px; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; transition: background .15s; user-select: none; }
+    .btn:hover { background: var(--border); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+    .btn.danger:hover { background: var(--danger); color: #fff; }
+    .btn.sm { padding: 3px 10px; font-size: 12px; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--border); }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+    .empty-row td { text-align: center; color: var(--text-muted); padding: 32px; }
+
+    /* ── Color swatch ── */
+    .color-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex-shrink: 0; border: 2px solid rgba(255,255,255,.15); }
+
+    /* ── Relation triple display ── */
+    .triple { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .triple-node { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-weight: 500; }
+    .triple-arrow { color: var(--text-muted); font-size: 11px; display: flex; align-items: center; gap: 4px; }
+    .triple-rel { background: #58a6ff22; border: 1px solid #58a6ff44; border-radius: 12px; padding: 2px 10px; color: var(--accent); font-size: 11px; font-weight: 600; }
+
+    /* ── Ontology graph ── */
+    #ontology-graph { width: 100%; height: 360px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 20px; }
+    .graph-empty { width: 100%; height: 360px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; margin-top: 20px; }
+
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 460px; max-width: 95vw; box-shadow: 0 24px 48px rgba(0,0,0,.5); }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+    .modal-title { font-size: 15px; font-weight: 600; flex: 1; }
+    .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 2px; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 500; }
+    input[type="text"], input[type="color"], select, textarea {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none; transition: border-color .15s; font-family: inherit;
+    }
+    input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    input[type="color"] { padding: 2px 6px; height: 36px; cursor: pointer; }
+    .color-row { display: flex; gap: 8px; align-items: center; }
+    .color-row input[type="text"] { flex: 1; }
+    select option { background: var(--surface2); }
+
+    /* ── Config tab ── */
+    .config-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 16px; }
+    .config-card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .config-card-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6; }
+    .radio-group { display: flex; flex-direction: column; gap: 12px; }
+    .radio-option { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border); transition: border-color .15s, background .15s; }
+    .radio-option:hover { background: var(--surface); }
+    .radio-option.selected { border-color: var(--accent); background: #58a6ff0d; }
+    .radio-option input[type="radio"] { width: auto; margin-top: 2px; flex-shrink: 0; }
+    .radio-label { font-size: 13px; font-weight: 600; }
+    .radio-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Toast ── */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 2000; }
+    .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,.4); animation: slideIn .2s ease; }
+    .toast.ok { border-color: var(--success); }
+    .toast.err { border-color: var(--danger); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="back-link" href="/">← 返回编辑器</a>
+  <div style="width:1px;height:20px;background:var(--border)"></div>
+  <div class="page-title">本体管理</div>
+  <div class="mode-badge warn" id="mode-badge">宽松模式</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('classes', this)">类定义</div>
+  <div class="tab" onclick="switchTab('relations', this)">关系约束</div>
+  <div class="tab" onclick="switchTab('config', this)">校验设置</div>
+</div>
+
+<!-- ── Tab 1: 类定义 ── -->
+<div id="tab-classes" class="tab-content active">
+  <div class="toolbar">
+    <div>
+      <div class="toolbar-title">类定义</div>
+      <div class="toolbar-sub">定义图谱中合法的节点标签类型</div>
+    </div>
+    <button class="btn primary" onclick="openClassModal(null)">＋ 新建类</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th>标签</th><th>显示名</th><th>颜色</th><th>说明</th><th>创建人</th><th>操作</th>
+    </tr></thead>
+    <tbody id="class-tbody"></tbody>
+  </table>
+</div>
+
+<!-- ── Tab 2: 关系约束 ── -->
+<div id="tab-relations" class="tab-content">
+  <div class="toolbar">
+    <div>
+      <div class="toolbar-title">关系约束</div>
+      <div class="toolbar-sub">定义哪些类之间允许建立哪种关系（三元组约束）</div>
+    </div>
+    <button class="btn primary" onclick="openRelModal()">＋ 新建关系约束</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th>关系三元组</th><th>显示名</th><th>说明</th><th>创建人</th><th>操作</th>
+    </tr></thead>
+    <tbody id="rel-tbody"></tbody>
+  </table>
+  <div id="ontology-graph-wrap"></div>
+</div>
+
+<!-- ── Tab 3: 校验设置 ── -->
+<div id="tab-config" class="tab-content">
+  <div style="max-width:560px">
+    <div class="toolbar" style="margin-bottom:20px">
+      <div>
+        <div class="toolbar-title">校验设置</div>
+        <div class="toolbar-sub">控制编辑器在违反本体约束时的行为</div>
+      </div>
+    </div>
+    <div class="config-card">
+      <div class="config-card-title">校验模式</div>
+      <div class="config-card-desc">
+        当节点标签或关系三元组不在本体定义中时：<br>
+        <b>宽松模式</b>会弹出警告但允许保存；<b>严格模式</b>会直接拒绝操作。<br>
+        <span style="color:var(--warning)">注意：如果本体为空（未定义任何类或关系），校验自动跳过。</span>
+      </div>
+      <div class="radio-group">
+        <label class="radio-option" id="opt-warn">
+          <input type="radio" name="vmode" value="warn" onchange="saveConfig('warn')" />
+          <div>
+            <div class="radio-label">🟡 宽松模式（warn）</div>
+            <div class="radio-desc">违反约束时弹出 toast 警告，但操作仍可继续。适合图谱建设初期。</div>
+          </div>
+        </label>
+        <label class="radio-option" id="opt-strict">
+          <input type="radio" name="vmode" value="strict" onchange="saveConfig('strict')" />
+          <div>
+            <div class="radio-label">🔴 严格模式（strict）</div>
+            <div class="radio-desc">违反约束时前端和后端都会阻止操作。适合本体已稳定的生产环境。</div>
+          </div>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Class modal ── -->
+<div class="modal-overlay hidden" id="class-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="class-modal-title">新建类</div>
+      <button class="modal-close" onclick="closeModal('class-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Neo4j 标签名 <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="cm-label" placeholder="例: Person（与 Neo4j 中完全一致）" />
+      </div>
+      <div class="form-group">
+        <label>显示名</label>
+        <input type="text" id="cm-display" placeholder="例: 人员" />
+      </div>
+      <div class="form-group">
+        <label>颜色</label>
+        <div class="color-row">
+          <input type="color" id="cm-color-picker" value="#4C8EDA" oninput="syncColor(this)" style="width:48px;flex-shrink:0" />
+          <input type="text" id="cm-color" value="#4C8EDA" placeholder="#4C8EDA" oninput="syncColorPicker(this)" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>图标（Emoji）</label>
+        <input type="text" id="cm-icon" placeholder="例: 🧵" maxlength="4" />
+      </div>
+      <div class="form-group">
+        <label>说明</label>
+        <input type="text" id="cm-desc" placeholder="这个类表示…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('class-modal')">取消</button>
+      <button class="btn primary" onclick="saveClass()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Relation modal ── -->
+<div class="modal-overlay hidden" id="rel-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">新建关系约束</div>
+      <button class="modal-close" onclick="closeModal('rel-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>起点类 <span style="color:var(--danger)">*</span> <span style="color:var(--text-muted);font-weight:400">（填 * 表示任意）</span></label>
+        <input type="text" id="rm-src" list="rm-src-list" placeholder="例: Person 或 *" />
+        <datalist id="rm-src-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label>关系类型 <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="rm-rel" placeholder="例: SUB_BREED" style="text-transform:uppercase" />
+      </div>
+      <div class="form-group">
+        <label>终点类 <span style="color:var(--danger)">*</span> <span style="color:var(--text-muted);font-weight:400">（填 * 表示任意）</span></label>
+        <input type="text" id="rm-tgt" list="rm-tgt-list" placeholder="例: Company 或 *" />
+        <datalist id="rm-tgt-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label>显示名</label>
+        <input type="text" id="rm-display" placeholder="例: 子品种" />
+      </div>
+      <div class="form-group">
+        <label>说明</label>
+        <input type="text" id="rm-desc" placeholder="这个关系表示…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('rel-modal')">取消</button>
+      <button class="btn primary" onclick="saveRelation()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const API = 'http://localhost:8000/api';
+let authToken = localStorage.getItem('auth_token');
+
+// ── Auth check ─────────────────────────────────────────────────────────────────
+if (!authToken) { location.href = '/'; }
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let classes   = [];
+let relations = [];
+let vmode     = 'warn';
+let editingClassId = null;
+let ontologyNetwork = null;
+
+// ── API helper ─────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const resp = await fetch(API + path, opts);
+  if (resp.status === 401) { location.href = '/'; return; }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
+function toast(msg, type = 'ok') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'relations') renderOntologyGraph();
+}
+
+// ── Load everything ────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    const data = await api('GET', '/ontology');
+    classes   = data.classes   || [];
+    relations = data.relations || [];
+    vmode     = data.validation_mode || 'warn';
+    renderClasses();
+    renderRelations();
+    renderConfigTab();
+    updateModeBadge();
+  } catch (e) { toast('加载失败: ' + e.message, 'err'); }
+}
+
+function updateModeBadge() {
+  const b = document.getElementById('mode-badge');
+  if (vmode === 'strict') {
+    b.textContent = '严格模式'; b.className = 'mode-badge strict';
+  } else {
+    b.textContent = '宽松模式'; b.className = 'mode-badge warn';
+  }
+}
+
+// ── Render classes ─────────────────────────────────────────────────────────────
+function renderClasses() {
+  const tbody = document.getElementById('class-tbody');
+  if (!classes.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无类定义，点击「新建类」添加</td></tr>';
+    return;
+  }
+  tbody.innerHTML = classes.map(c => `
+    <tr>
+      <td><b>${c.icon || '⬡'} ${c.label_name}</b></td>
+      <td>${c.display_name || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="color-dot" style="background:${c.color || '#4C8EDA'}"></span> <code style="font-size:11px">${c.color || ''}</code></td>
+      <td style="color:var(--text-muted)">${c.description || '—'}</td>
+      <td style="color:var(--text-muted);font-size:12px">${c.created_by}</td>
+      <td style="white-space:nowrap">
+        <button class="btn sm" onclick="openClassModal(${c.id})">编辑</button>
+        <button class="btn sm danger" style="margin-left:4px" onclick="deleteClass(${c.id},'${c.label_name}')">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Render relations ───────────────────────────────────────────────────────────
+function renderRelations() {
+  const tbody = document.getElementById('rel-tbody');
+  if (!relations.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无关系约束，点击「新建关系约束」添加</td></tr>';
+    return;
+  }
+  tbody.innerHTML = relations.map(r => {
+    const srcColor = classColor(r.source_label);
+    const tgtColor = classColor(r.target_label);
+    const tripleHtml = `
+      <div class="triple">
+        <span class="triple-node" style="border-color:${srcColor}44;color:${srcColor}">${r.source_label}</span>
+        <div class="triple-arrow">──<span class="triple-rel">${r.rel_type}</span>──▶</div>
+        <span class="triple-node" style="border-color:${tgtColor}44;color:${tgtColor}">${r.target_label}</span>
+      </div>`;
+    return `<tr>
+      <td>${tripleHtml}</td>
+      <td>${r.display_name || '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="color:var(--text-muted)">${r.description || '—'}</td>
+      <td style="color:var(--text-muted);font-size:12px">${r.created_by}</td>
+      <td><button class="btn sm danger" onclick="deleteRelation(${r.id},'${r.rel_type}')">删除</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function classColor(label) {
+  const c = classes.find(x => x.label_name === label);
+  return c ? c.color : '#8b949e';
+}
+
+// ── Ontology graph visualization ───────────────────────────────────────────────
+function renderOntologyGraph() {
+  const wrap = document.getElementById('ontology-graph-wrap');
+  if (!classes.length && !relations.length) {
+    wrap.innerHTML = '<div class="graph-empty">暂无本体数据，定义类和关系后显示可视化图</div>';
+    return;
+  }
+
+  // Collect all labels mentioned (classes + wildcard refs in relations)
+  const labelSet = new Set(classes.map(c => c.label_name));
+  relations.forEach(r => { labelSet.add(r.source_label); labelSet.add(r.target_label); });
+
+  const visNodes = [...labelSet].map(lbl => {
+    const cls = classes.find(c => c.label_name === lbl);
+    const color = cls ? cls.color : '#8b949e';
+    return {
+      id: lbl,
+      label: (cls ? (cls.icon || '⬡') + ' ' : '') + lbl + (cls && cls.display_name ? '\n' + cls.display_name : ''),
+      color: { background: color, border: color, highlight: { background: color, border: '#fff' } },
+      font: { color: '#fff', size: 13, face: 'sans-serif' },
+      borderWidth: 2, shape: 'dot', size: 22,
+      shadow: { enabled: true, color: 'rgba(0,0,0,.4)', size: 8 },
+    };
+  });
+
+  const visEdges = relations.map((r, i) => ({
+    id: i,
+    from: r.source_label,
+    to: r.target_label,
+    label: r.display_name || r.rel_type,
+    arrows: 'to',
+    color: { color: '#58a6ff', highlight: '#79c0ff' },
+    font: { color: '#8b949e', size: 11, align: 'middle' },
+    smooth: { type: 'curvedCW', roundness: 0.2 },
+  }));
+
+  wrap.innerHTML = '<div id="ontology-graph"></div>';
+  const container = document.getElementById('ontology-graph');
+  if (ontologyNetwork) { ontologyNetwork.destroy(); ontologyNetwork = null; }
+  ontologyNetwork = new vis.Network(container,
+    { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) },
+    {
+      physics: { barnesHut: { gravitationalConstant: -6000, springLength: 160 }, stabilization: { iterations: 100 } },
+      interaction: { hover: true, tooltipDelay: 200 },
+      manipulation: { enabled: false },
+    }
+  );
+  ontologyNetwork.on('stabilizationIterationsDone', () =>
+    ontologyNetwork.setOptions({ physics: { enabled: false } })
+  );
+}
+
+// ── Config tab ─────────────────────────────────────────────────────────────────
+function renderConfigTab() {
+  document.querySelectorAll('input[name="vmode"]').forEach(r => {
+    r.checked = r.value === vmode;
+  });
+  document.getElementById('opt-warn').classList.toggle('selected',   vmode === 'warn');
+  document.getElementById('opt-strict').classList.toggle('selected', vmode === 'strict');
+}
+
+async function saveConfig(mode) {
+  try {
+    await api('PUT', '/ontology/config', { validation_mode: mode });
+    vmode = mode;
+    updateModeBadge();
+    renderConfigTab();
+    toast(mode === 'strict' ? '✅ 已切换为严格模式' : '✅ 已切换为宽松模式');
+  } catch (e) { toast('保存失败: ' + e.message, 'err'); }
+}
+
+// ── Class modal ────────────────────────────────────────────────────────────────
+function openClassModal(id) {
+  editingClassId = id;
+  const c = id ? classes.find(x => x.id === id) : null;
+  document.getElementById('class-modal-title').textContent = id ? '编辑类' : '新建类';
+  document.getElementById('cm-label').value   = c ? c.label_name   : '';
+  document.getElementById('cm-display').value = c ? (c.display_name || '') : '';
+  document.getElementById('cm-color').value   = c ? (c.color || '#4C8EDA') : '#4C8EDA';
+  document.getElementById('cm-color-picker').value = c ? (c.color || '#4C8EDA') : '#4C8EDA';
+  document.getElementById('cm-icon').value    = c ? (c.icon || '') : '';
+  document.getElementById('cm-desc').value    = c ? (c.description || '') : '';
+  document.getElementById('cm-label').readOnly = !!id;  // can't rename label
+  document.getElementById('class-modal').classList.remove('hidden');
+}
+
+function syncColor(picker) {
+  document.getElementById('cm-color').value = picker.value;
+}
+function syncColorPicker(input) {
+  if (/^#[0-9a-fA-F]{6}$/.test(input.value))
+    document.getElementById('cm-color-picker').value = input.value;
+}
+
+async function saveClass() {
+  const label   = document.getElementById('cm-label').value.trim();
+  const display = document.getElementById('cm-display').value.trim() || null;
+  const color   = document.getElementById('cm-color').value.trim() || '#4C8EDA';
+  const icon    = document.getElementById('cm-icon').value.trim() || '⬡';
+  const desc    = document.getElementById('cm-desc').value.trim() || null;
+  if (!label) { toast('请填写标签名', 'err'); return; }
+  try {
+    if (editingClassId) {
+      await api('PUT', `/ontology/classes/${editingClassId}`, { display_name: display, description: desc, color, icon });
+      toast('✅ 已更新');
+    } else {
+      await api('POST', '/ontology/classes', { label_name: label, display_name: display, description: desc, color, icon });
+      toast('✅ 已创建');
+    }
+    closeModal('class-modal');
+    await loadAll();
+  } catch (e) { toast('保存失败: ' + e.message, 'err'); }
+}
+
+async function deleteClass(id, label) {
+  if (!confirm(`确定删除类「${label}」？\n关联的关系约束也会一并删除。`)) return;
+  try {
+    await api('DELETE', `/ontology/classes/${id}`);
+    toast('✅ 已删除');
+    await loadAll();
+  } catch (e) { toast('删除失败: ' + e.message, 'err'); }
+}
+
+// ── Relation modal ─────────────────────────────────────────────────────────────
+function openRelModal() {
+  document.getElementById('rm-src').value     = '';
+  document.getElementById('rm-rel').value     = '';
+  document.getElementById('rm-tgt').value     = '';
+  document.getElementById('rm-display').value = '';
+  document.getElementById('rm-desc').value    = '';
+  // Populate datalists with defined class names
+  const opts = ['<option value="*">',
+    ...classes.map(c => `<option value="${c.label_name}">`)].join('');
+  document.getElementById('rm-src-list').innerHTML = opts;
+  document.getElementById('rm-tgt-list').innerHTML = opts;
+  document.getElementById('rel-modal').classList.remove('hidden');
+}
+
+async function saveRelation() {
+  const src     = document.getElementById('rm-src').value.trim();
+  const rel     = document.getElementById('rm-rel').value.trim().toUpperCase();
+  const tgt     = document.getElementById('rm-tgt').value.trim();
+  const display = document.getElementById('rm-display').value.trim() || null;
+  const desc    = document.getElementById('rm-desc').value.trim() || null;
+  if (!src || !rel || !tgt) { toast('起点、关系类型、终点均为必填', 'err'); return; }
+  try {
+    await api('POST', '/ontology/relations', { rel_type: rel, source_label: src, target_label: tgt, display_name: display, description: desc });
+    toast('✅ 关系约束已创建');
+    closeModal('rel-modal');
+    await loadAll();
+    renderOntologyGraph();
+  } catch (e) { toast('保存失败: ' + e.message, 'err'); }
+}
+
+async function deleteRelation(id, rel) {
+  if (!confirm(`确定删除关系约束「${rel}」？`)) return;
+  try {
+    await api('DELETE', `/ontology/relations/${id}`);
+    toast('✅ 已删除');
+    await loadAll();
+    renderOntologyGraph();
+  } catch (e) { toast('删除失败: ' + e.message, 'err'); }
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────────────
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+document.querySelectorAll('.modal-overlay').forEach(o =>
+  o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); })
+);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(o => closeModal(o.id));
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>
