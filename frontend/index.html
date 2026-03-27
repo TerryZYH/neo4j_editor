@@ -594,6 +594,44 @@
     .empty-icon { font-size: 48px; }
     .empty-text { font-size: 15px; }
 
+    /* ── Schema modal ── */
+    .schema-filter-tabs {
+      display: flex; gap: 6px; margin-bottom: 14px;
+    }
+    .schema-filter-tab {
+      padding: 4px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+      transition: background .15s, color .15s;
+    }
+    .schema-filter-tab.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+
+    .schema-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .schema-table th { text-align: left; padding: 6px 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .schema-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .schema-table tr:last-child td { border-bottom: none; }
+    .schema-table tr:hover td { background: var(--surface2); }
+    .enum-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .enum-chip {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1px 8px; font-size: 11px; color: var(--text-muted);
+    }
+    .schema-empty { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+
+    /* inline enum editor */
+    .enum-editor { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .enum-tag-edit {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 2px 8px; font-size: 12px;
+    }
+    .enum-tag-del { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; }
+    .enum-add-row { display: flex; gap: 6px; }
+    .enum-add-row input { flex: 1; }
+
+    /* prop row with schema select */
+    .prop-edit-row select { flex: 1; }
+    .prop-required-mark { color: var(--danger); margin-left: 2px; font-size: 11px; }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -719,6 +757,7 @@
       <button class="btn" id="btn-fit">⬜ 适应屏幕</button>
       <button class="btn" id="btn-layout">⊞ 重排布局</button>
       <button class="btn" id="btn-expand" title="展开选中节点的邻居">↗ 展开邻居</button>
+      <button class="btn" id="btn-schemas">📋 属性模板</button>
     </div>
   </aside>
 
@@ -786,8 +825,10 @@
     <div class="modal-body">
       <div class="form-group">
         <label>关系类型</label>
-        <input type="text" id="edge-type" placeholder="例: KNOWS, WORKS_AT" list="rel-types-list" />
-        <datalist id="rel-types-list"></datalist>
+        <div id="edge-type-wrap">
+          <input type="text" id="edge-type" placeholder="例: KNOWS, WORKS_AT" list="rel-types-list" />
+          <datalist id="rel-types-list"></datalist>
+        </div>
       </div>
       <div class="form-group">
         <label>属性</label>
@@ -802,6 +843,80 @@
   </div>
 </div>
 
+<!-- ── Schema list modal ────────────────────────────────── -->
+<div class="modal-overlay hidden" id="schema-list-modal">
+  <div class="modal" style="width:680px;max-height:85vh">
+    <div class="modal-header">
+      <div class="modal-title">📋 属性模板管理</div>
+      <button class="modal-close" onclick="closeModal('schema-list-modal')">×</button>
+    </div>
+    <div class="modal-body" style="padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="schema-filter-tabs">
+          <div class="schema-filter-tab active" onclick="setSchemaFilter('all',this)">全部</div>
+          <div class="schema-filter-tab" onclick="setSchemaFilter('node',this)">节点</div>
+          <div class="schema-filter-tab" onclick="setSchemaFilter('edge',this)">边</div>
+        </div>
+        <button class="btn primary" onclick="openSchemaEditModal(null)">＋ 新建模板</button>
+      </div>
+      <div id="schema-table-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Schema edit modal ─────────────────────────────────── -->
+<div class="modal-overlay hidden" id="schema-edit-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <div class="modal-title" id="schema-edit-title">新建属性模板</div>
+      <button class="modal-close" onclick="closeModal('schema-edit-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>适用对象</label>
+        <select id="se-entity-type" onchange="onSchemaEntityTypeChange()">
+          <option value="node">节点 (Node)</option>
+          <option value="edge">边 (Edge)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label id="se-label-label">节点标签 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有标签）</span></label>
+        <input type="text" id="se-entity-label" placeholder="例: Person 或 *" />
+      </div>
+      <div class="form-group" id="se-propkey-group">
+        <label>属性键</label>
+        <input type="text" id="se-prop-key" placeholder="例: status" />
+      </div>
+      <div class="form-group">
+        <label>枚举值</label>
+        <div class="enum-editor" id="se-enum-chips"></div>
+        <div class="enum-add-row">
+          <input type="text" id="se-enum-input" placeholder="输入一个值后按回车添加" />
+          <button class="btn" onclick="addEnumValue()">添加</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="se-required" style="width:auto" />
+          必填（新建时自动预填该属性）
+        </label>
+      </div>
+      <div class="form-group">
+        <label>默认值 <span style="color:var(--text-muted);font-weight:400">（可选）</span></label>
+        <input type="text" id="se-default-val" placeholder="留空则无默认值" />
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>备注说明 <span style="color:var(--text-muted);font-weight:400">（可选）</span></label>
+        <input type="text" id="se-description" placeholder="这个属性用来表示…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('schema-edit-modal')">取消</button>
+      <button class="btn primary" id="se-save-btn" onclick="saveSchema()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Toast container ─────────────────────────────────── -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -809,6 +924,12 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const API     = 'http://localhost:8000/api';
 const WS_URL  = 'ws://localhost:8000/ws';
+
+// ── Schema cache ──────────────────────────────────────────────────────────────
+let schemasCache = [];   // full list, refreshed on open
+let _schemaFilter = 'all';
+let _schemaEditingId = null;   // null = create, number = edit
+let _seEnumValues = [];        // current enum list in edit modal
 
 // ── Auth state ────────────────────────────────────────────────────────────────
 let authToken   = localStorage.getItem('auth_token');
@@ -1447,14 +1568,35 @@ function closeModal(id) {
   }
 }
 
-function addPropRow(editorId, key = '', val = '') {
+function addPropRow(editorId, key = '', val = '', schema = null) {
   const editor = document.getElementById(editorId);
   const row = document.createElement('div');
   row.className = 'prop-edit-row';
+
+  const isRequired = schema && schema.required;
+  const hasEnum    = schema && schema.enum_values && schema.enum_values.length > 0;
+  const tip        = schema && schema.description ? ` title="${schema.description}"` : '';
+
+  let valHtml;
+  if (hasEnum) {
+    const opts = schema.enum_values.map(v =>
+      `<option value="${v}" ${String(v) === String(val) ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    valHtml = `<select class="prop-val-input">${opts}</select>`;
+  } else {
+    valHtml = `<input type="text" placeholder="值" value="${val}" class="prop-val-input" />`;
+  }
+
+  const keyStyle = isRequired ? 'font-weight:600;color:var(--accent)' : '';
+  const delBtn   = isRequired
+    ? `<button class="prop-del-btn" disabled style="opacity:.3" title="必填项">×</button>`
+    : `<button class="prop-del-btn" onclick="this.parentElement.remove()">×</button>`;
+
   row.innerHTML = `
-    <input type="text" placeholder="键" value="${key}" class="prop-key-input" />
-    <input type="text" placeholder="值" value="${val}" class="prop-val-input" />
-    <button class="prop-del-btn" onclick="this.parentElement.remove()">×</button>
+    <input type="text" placeholder="键" value="${key}" class="prop-key-input"
+      ${isRequired ? 'readonly' : ''} style="${keyStyle}"${tip} />
+    ${valHtml}
+    ${delBtn}
   `;
   editor.appendChild(row);
 }
@@ -1463,7 +1605,8 @@ function collectProps(editorId) {
   const props = {};
   document.querySelectorAll(`#${editorId} .prop-edit-row`).forEach(row => {
     const k = row.querySelector('.prop-key-input').value.trim();
-    const v = row.querySelector('.prop-val-input').value.trim();
+    const valEl = row.querySelector('.prop-val-input');
+    const v = valEl ? valEl.value.trim() : '';
     if (k) props[k] = v;
   });
   return props;
@@ -1474,7 +1617,7 @@ function clearPropsEditor(editorId) {
 }
 
 // ── Create node ───────────────────────────────────────────────────────────────
-function openCreateNodeModal() {
+async function openCreateNodeModal() {
   document.getElementById('node-modal-title').textContent = '新建节点';
   document.getElementById('node-labels').value = '';
   clearPropsEditor('node-props-editor');
@@ -1483,6 +1626,23 @@ function openCreateNodeModal() {
   document.getElementById('node-modal-save').onclick = saveNewNode;
   document.getElementById('node-labels').focus();
 }
+
+// Rebuild props editor when user changes labels (debounced)
+let _labelChangeTimer;
+document.addEventListener('DOMContentLoaded', () => {
+  const labelsInput = document.getElementById('node-labels');
+  if (labelsInput) {
+    labelsInput.addEventListener('input', () => {
+      clearTimeout(_labelChangeTimer);
+      _labelChangeTimer = setTimeout(async () => {
+        const labels = labelsInput.value.split(',').map(l => l.trim()).filter(Boolean);
+        if (!labels.length) return;
+        const current = collectProps('node-props-editor');
+        await buildSchemaEditor('node-props-editor', 'node', labels, current);
+      }, 600);
+    });
+  }
+});
 
 async function saveNewNode() {
   const labelsRaw = document.getElementById('node-labels').value.trim();
@@ -1501,7 +1661,6 @@ async function saveNewNode() {
 
 // ── Edit node ─────────────────────────────────────────────────────────────────
 async function openEditNodeModal(nodeId) {
-  // Check if already locked by someone else (fast local check)
   const lk = lockedEntities.get(nodeId);
   if (lk) { toast(`🔒 该节点正在被「${lk.username}」编辑`, 'err'); return; }
 
@@ -1515,8 +1674,7 @@ async function openEditNodeModal(nodeId) {
 
   document.getElementById('node-modal-title').textContent = '编辑节点';
   document.getElementById('node-labels').value = (n.labels || []).join(', ');
-  clearPropsEditor('node-props-editor');
-  Object.entries(n.properties || {}).forEach(([k, v]) => addPropRow('node-props-editor', k, v));
+  await buildSchemaEditor('node-props-editor', 'node', n.labels || [], n.properties || {});
   document.getElementById('node-modal').classList.remove('hidden');
   document.getElementById('node-modal-save').onclick = () => saveEditNode(nodeId);
 }
@@ -1571,31 +1729,38 @@ async function deleteSelected() {
 }
 
 // ── Create edge ───────────────────────────────────────────────────────────────
-function openCreateEdgeModal() {
+async function openCreateEdgeModal() {
   if (selectedNodeIds.length !== 2) { toast('⚠️ 请先选中两个节点（按住 Ctrl 多选）', 'err'); return; }
   document.getElementById('edge-modal-title').textContent = '新建关系';
-  document.getElementById('edge-type').value = '';
+  await loadSchemasCache();
+  await loadRelTypes();
+  setupEdgeTypeField('');
   clearPropsEditor('edge-props-editor');
   document.getElementById('edge-modal').classList.remove('hidden');
   document.getElementById('edge-modal-save').onclick = () => saveNewEdge(selectedNodeIds[0], selectedNodeIds[1]);
-  document.getElementById('edge-type').focus();
-  loadRelTypes();
 }
 
 async function loadRelTypes() {
   try {
-    const types = await api('GET', '/relationship-types');
-    document.getElementById('rel-types-list').innerHTML = types.map(t => `<option value="${t}">`).join('');
+    window._cachedRelTypes = await api('GET', '/relationship-types');
+    const dl = document.getElementById('rel-types-list');
+    if (dl) dl.innerHTML = window._cachedRelTypes.map(t => `<option value="${t}">`).join('');
   } catch {}
 }
 
 async function saveNewEdge(sourceId, targetId) {
-  const type = document.getElementById('edge-type').value.trim().toUpperCase() || 'RELATES_TO';
+  const typeEl = document.getElementById('edge-type');
+  const type = (typeEl ? typeEl.value.trim().toUpperCase() : '') || 'RELATES_TO';
   const properties = collectProps('edge-props-editor');
   try {
     const e = await api('POST', '/relationships/by-element-id?' +
       new URLSearchParams({ source_element_id: sourceId, target_element_id: targetId, type }));
-    visEdges.add(makeVisEdge(e));
+    // Also patch properties if any
+    if (Object.keys(properties).length) {
+      await api('PUT', `/relationships/${e.id}`, { properties });
+    }
+    const final = Object.keys(properties).length ? { ...e, properties } : e;
+    visEdges.add(makeVisEdge(final));
     updateStats();
     closeModal('edge-modal');
     toast('✅ 关系已创建');
@@ -1616,12 +1781,12 @@ async function openEditEdgeModal(edgeId) {
   const e = visEdge._data;
 
   document.getElementById('edge-modal-title').textContent = '编辑关系';
-  document.getElementById('edge-type').value = e.type || '';
-  clearPropsEditor('edge-props-editor');
-  Object.entries(e.properties || {}).forEach(([k, v]) => addPropRow('edge-props-editor', k, v));
+  await loadSchemasCache();
+  await loadRelTypes();
+  setupEdgeTypeField(e.type || '');
+  await buildSchemaEditor('edge-props-editor', 'edge', [e.type || ''], e.properties || {});
   document.getElementById('edge-modal').classList.remove('hidden');
   document.getElementById('edge-modal-save').onclick = () => saveEditEdge(edgeId);
-  loadRelTypes();
 }
 
 async function saveEditEdge(edgeId) {
@@ -1750,6 +1915,257 @@ async function checkStatus() {
   }
 }
 
+// ── Schema management ─────────────────────────────────────────────────────────
+
+async function loadSchemasCache() {
+  try { schemasCache = await api('GET', '/schemas'); } catch { schemasCache = []; }
+}
+
+function getSchemaFor(entityType, entityLabel, propKey) {
+  // exact label match first, then '*'
+  return schemasCache.find(s => s.entity_type === entityType && s.entity_label === entityLabel && s.prop_key === propKey)
+      || schemasCache.find(s => s.entity_type === entityType && s.entity_label === '*' && s.prop_key === propKey)
+      || null;
+}
+
+function getSchemasFor(entityType, entityLabel) {
+  return schemasCache.filter(s =>
+    s.entity_type === entityType && (s.entity_label === entityLabel || s.entity_label === '*')
+  );
+}
+
+// Open schema list modal
+async function openSchemasModal() {
+  _schemaFilter = 'all';
+  document.querySelectorAll('.schema-filter-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+  await loadSchemasCache();
+  renderSchemaTable();
+  document.getElementById('schema-list-modal').classList.remove('hidden');
+}
+
+function setSchemaFilter(filter, el) {
+  _schemaFilter = filter;
+  document.querySelectorAll('.schema-filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderSchemaTable();
+}
+
+function renderSchemaTable() {
+  const wrap = document.getElementById('schema-table-wrap');
+  const filtered = _schemaFilter === 'all' ? schemasCache
+    : schemasCache.filter(s => s.entity_type === _schemaFilter);
+
+  if (!filtered.length) {
+    wrap.innerHTML = '<div class="schema-empty">暂无属性模板，点击「新建模板」添加</div>';
+    return;
+  }
+
+  const rows = filtered.map(s => {
+    const chips = s.enum_values.length
+      ? s.enum_values.map(v => `<span class="enum-chip">${v}</span>`).join('')
+      : '<span style="color:var(--text-muted);font-size:12px">—</span>';
+    const entityBadge = s.entity_type === 'node'
+      ? `<span style="color:#4CDA7A;font-size:11px">节点</span>`
+      : `<span style="color:#58a6ff;font-size:11px">边</span>`;
+    const propKeyDisplay = s.prop_key === '__rel_type__'
+      ? `<span style="color:var(--warning)">[关系类型]</span>`
+      : s.prop_key;
+    const reqBadge = s.required
+      ? `<span style="color:var(--danger);font-size:11px">必填</span>` : '—';
+    return `<tr>
+      <td>${entityBadge} <b>${s.entity_label}</b></td>
+      <td>${propKeyDisplay}</td>
+      <td><div class="enum-chips">${chips}</div></td>
+      <td style="text-align:center">${reqBadge}</td>
+      <td style="white-space:nowrap">
+        <button class="btn" style="padding:3px 8px;font-size:12px" onclick="openSchemaEditModal(${s.id})">编辑</button>
+        <button class="btn danger" style="padding:3px 8px;font-size:12px;margin-left:4px" onclick="confirmDeleteSchema(${s.id},'${s.entity_label}','${s.prop_key}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="schema-table">
+    <thead><tr>
+      <th>标签 / 关系类型</th><th>属性键</th><th>枚举值</th><th>必填</th><th>操作</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// Open schema create/edit modal
+function openSchemaEditModal(id) {
+  _schemaEditingId = id;
+  _seEnumValues = [];
+
+  if (id === null) {
+    document.getElementById('schema-edit-title').textContent = '新建属性模板';
+    document.getElementById('se-entity-type').value = 'node';
+    document.getElementById('se-entity-label').value = '';
+    document.getElementById('se-prop-key').value = '';
+    document.getElementById('se-required').checked = false;
+    document.getElementById('se-default-val').value = '';
+    document.getElementById('se-description').value = '';
+    onSchemaEntityTypeChange();
+  } else {
+    const s = schemasCache.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('schema-edit-title').textContent = '编辑属性模板';
+    document.getElementById('se-entity-type').value = s.entity_type;
+    document.getElementById('se-entity-label').value = s.entity_label;
+    document.getElementById('se-prop-key').value = s.prop_key;
+    document.getElementById('se-required').checked = s.required;
+    document.getElementById('se-default-val').value = s.default_val || '';
+    document.getElementById('se-description').value = s.description || '';
+    _seEnumValues = [...s.enum_values];
+    onSchemaEntityTypeChange();
+  }
+
+  renderEnumChips();
+  document.getElementById('schema-edit-modal').classList.remove('hidden');
+}
+
+function onSchemaEntityTypeChange() {
+  const isEdge = document.getElementById('se-entity-type').value === 'edge';
+  document.getElementById('se-label-label').innerHTML = isEdge
+    ? '关系类型 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有类型）</span>'
+    : '节点标签 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有标签）</span>';
+  // Show/hide prop key field — for edge __rel_type__ it's a special key
+  if (isEdge) {
+    document.getElementById('se-propkey-group').innerHTML = `
+      <label>属性键 <span style="color:var(--text-muted);font-weight:400">（填 __rel_type__ 约束关系类型本身）</span></label>
+      <input type="text" id="se-prop-key" placeholder="例: role 或 __rel_type__" value="${document.getElementById('se-prop-key')?.value || ''}" />`;
+  } else {
+    document.getElementById('se-propkey-group').innerHTML = `
+      <label>属性键</label>
+      <input type="text" id="se-prop-key" placeholder="例: status" value="${document.getElementById('se-prop-key')?.value || ''}" />`;
+  }
+}
+
+function renderEnumChips() {
+  const wrap = document.getElementById('se-enum-chips');
+  wrap.innerHTML = _seEnumValues.map((v, i) => `
+    <div class="enum-tag-edit">
+      <span>${v}</span>
+      <button class="enum-tag-del" onclick="_seEnumValues.splice(${i},1);renderEnumChips()">×</button>
+    </div>
+  `).join('');
+}
+
+function addEnumValue() {
+  const inp = document.getElementById('se-enum-input');
+  const val = inp.value.trim();
+  if (!val) return;
+  if (_seEnumValues.includes(val)) { toast('该值已存在', 'err'); return; }
+  _seEnumValues.push(val);
+  inp.value = '';
+  renderEnumChips();
+  inp.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.id === 'se-enum-input') {
+    e.preventDefault();
+    addEnumValue();
+  }
+});
+
+async function saveSchema() {
+  const entityType  = document.getElementById('se-entity-type').value;
+  const entityLabel = document.getElementById('se-entity-label').value.trim();
+  const propKey     = document.getElementById('se-prop-key').value.trim();
+  const required    = document.getElementById('se-required').checked;
+  const defaultVal  = document.getElementById('se-default-val').value.trim() || null;
+  const description = document.getElementById('se-description').value.trim() || null;
+
+  if (!entityLabel) { toast('请填写标签/关系类型', 'err'); return; }
+  if (!propKey)     { toast('请填写属性键', 'err'); return; }
+  if (_seEnumValues.length === 0) { toast('至少添加一个枚举值', 'err'); return; }
+
+  const body = { entity_type: entityType, entity_label: entityLabel, prop_key: propKey,
+    enum_values: _seEnumValues, required, default_val: defaultVal, description };
+
+  try {
+    if (_schemaEditingId === null) {
+      await api('POST', '/schemas', body);
+      toast('✅ 模板已创建');
+    } else {
+      await api('PUT', `/schemas/${_schemaEditingId}`, { enum_values: _seEnumValues, required, default_val: defaultVal, description });
+      toast('✅ 模板已更新');
+    }
+    closeModal('schema-edit-modal');
+    await loadSchemasCache();
+    renderSchemaTable();
+  } catch {}
+}
+
+async function confirmDeleteSchema(id, label, propKey) {
+  if (!confirm(`确定删除「${label} · ${propKey}」模板吗？`)) return;
+  try {
+    await api('DELETE', `/schemas/${id}`);
+    toast('✅ 已删除');
+    await loadSchemasCache();
+    renderSchemaTable();
+  } catch {}
+}
+
+// ── Schema-aware prop editor ───────────────────────────────────────────────────
+
+// Render props editor with schema awareness
+async function buildSchemaEditor(editorId, entityType, entityLabels, existingProps) {
+  clearPropsEditor(editorId);
+  await loadSchemasCache();
+
+  const applicable = getSchemasForLabels(entityType, entityLabels)
+    .filter(s => s.prop_key !== '__rel_type__');
+  const schemaByKey = {};
+  applicable.forEach(s => { schemaByKey[s.prop_key] = s; });
+
+  // Existing props first
+  const added = new Set();
+  for (const [k, v] of Object.entries(existingProps)) {
+    addPropRow(editorId, k, String(v), schemaByKey[k] || null);
+    added.add(k);
+  }
+  // Required props not yet present
+  for (const s of applicable) {
+    if (s.required && !added.has(s.prop_key)) {
+      addPropRow(editorId, s.prop_key, s.default_val || '', s);
+    }
+  }
+}
+
+function getSchemasForLabels(entityType, entityLabels) {
+  const result = [], seen = new Set();
+  for (const lbl of entityLabels) {
+    for (const s of schemasCache) {
+      if (s.entity_type === entityType && (s.entity_label === lbl || s.entity_label === '*')) {
+        if (!seen.has(s.prop_key)) { result.push(s); seen.add(s.prop_key); }
+      }
+    }
+  }
+  return result;
+}
+
+// Set edge-type field: select if __rel_type__ schema exists, otherwise plain input
+function setupEdgeTypeField(currentType) {
+  const wrap = document.getElementById('edge-type-wrap');
+  const relTypeSchema = schemasCache.find(s =>
+    s.entity_type === 'edge' && s.prop_key === '__rel_type__' && s.enum_values.length > 0
+  );
+  if (relTypeSchema) {
+    const opts = relTypeSchema.enum_values.map(v =>
+      `<option value="${v}" ${v === currentType ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    wrap.innerHTML = `<select id="edge-type">${opts}</select>`;
+  } else {
+    const types = window._cachedRelTypes || [];
+    const dl = types.map(t => `<option value="${t}">`).join('');
+    wrap.innerHTML = `
+      <input type="text" id="edge-type" placeholder="例: KNOWS, WORKS_AT" value="${currentType}" list="rel-types-list" />
+      <datalist id="rel-types-list">${dl}</datalist>`;
+  }
+}
+
 // ── Button bindings ───────────────────────────────────────────────────────────
 document.getElementById('btn-load').onclick = () => loadGraph();
 document.getElementById('btn-add-node').onclick = openCreateNodeModal;
@@ -1759,6 +2175,7 @@ document.getElementById('btn-delete').onclick = () => {
   else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
   else toast('⚠️ 请先选中要删除的元素', 'err');
 };
+document.getElementById('btn-schemas').onclick = openSchemasModal;
 document.getElementById('btn-fit').onclick = () => network && network.fit({ animation: true });
 document.getElementById('btn-layout').onclick = () => {
   if (!network) return;

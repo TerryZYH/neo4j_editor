@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from auth import init_db, get_current_user, decode_token, router as auth_router
 from ws_manager import manager
 from admin import router as admin_router
+from schemas import init_schema_db, router as schemas_router
 
 load_dotenv()
 
@@ -23,8 +24,10 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(schemas_router)
 
 init_db()
+init_schema_db()
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
