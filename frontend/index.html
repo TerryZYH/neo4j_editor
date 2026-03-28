@@ -3163,11 +3163,15 @@ async function loadNeighborPanel(nodeId) {
 }
 
 function _nbMatchesFilters(n) {
-  const rels = (_nbRawData.edgeMap[n.id] || []);
-  const relOk = !_nbFilterRel || rels.some(r => r.type === _nbFilterRel);
-  const dirOk = !_nbFilterDir || rels.some(r => r.dir === _nbFilterDir);
+  const rels  = (_nbRawData.edgeMap[n.id] || []);
   const lblOk = !_nbFilterLbl || (n.labels || []).includes(_nbFilterLbl);
-  return relOk && dirOk && lblOk;
+  if (!lblOk) return false;
+  if (!_nbFilterRel && !_nbFilterDir) return true;
+  // At least one edge must satisfy BOTH rel-type and direction simultaneously
+  return rels.some(r =>
+    (!_nbFilterRel || r.type === _nbFilterRel) &&
+    (!_nbFilterDir || r.dir  === _nbFilterDir)
+  );
 }
 
 function _renderNeighborList() {
