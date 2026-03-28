@@ -3061,8 +3061,8 @@ async function addNodeToWorkspace(nodeId) {
     // Refresh inspector props tab buttons (加入→移出)
     const vn = visNodes.get(nodeId);
     if (vn && selectedNodeIds.includes(nodeId)) _renderNodePropsTab(vn._data);
-    // Refresh neighbor panel status (已在空间 badges)
-    if (_inspectorTab === 'neighbors' && _inspectorNodeId) loadNeighborPanel(_inspectorNodeId);
+    // Refresh neighbor panel badges without resetting filters
+    if (_inspectorTab === 'neighbors') _renderNeighborList();
   } catch {}
 }
 
@@ -3096,46 +3096,151 @@ function setInspectorTab(tab) {
   if (tab === 'neighbors' && _inspectorNodeId) loadNeighborPanel(_inspectorNodeId);
 }
 
+// ── Neighbor panel with filters ────────────────────────────────────────────────
+
+let _nbRawData    = null;  // { neighbors, edgeMap, relTypes, labelTypes }
+let _nbFilterRel  = '';    // rel type filter
+let _nbFilterDir  = '';    // 'out' | 'in' | ''
+let _nbFilterLbl  = '';    // node label filter
+
 async function loadNeighborPanel(nodeId) {
   const container = document.getElementById('inspector-neighbors-body');
   container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载中…</div>';
+  _nbRawData = null; _nbFilterRel = ''; _nbFilterDir = ''; _nbFilterLbl = '';
+
   try {
     const data = await api('GET', `/node-neighbors/${nodeId}`);
     const neighbors = data.nodes.filter(n => n.id !== nodeId);
+
     if (!neighbors.length) {
       container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">无邻居节点</div>';
       return;
     }
-    // Build edge index for direction labels
+
+    // Build edge map: neighbor_id -> [{type, dir:'out'|'in'}]
     const edgeMap = {};
     data.edges.forEach(e => {
       const other = e.source === nodeId ? e.target : e.source;
       if (!edgeMap[other]) edgeMap[other] = [];
-      edgeMap[other].push({ type: e.type, dir: e.source === nodeId ? '→' : '←' });
+      edgeMap[other].push({ type: e.type, dir: e.source === nodeId ? 'out' : 'in' });
     });
 
-    container.innerHTML = '<div class="neighbor-list">' + neighbors.map(n => {
-      const color = getLabelColor(n.labels[0] || 'Node');
-      const name  = nodeLabel(n);
-      const label = (n.labels || []).join(', ');
-      const rels  = (edgeMap[n.id] || []).map(r => `${r.dir} ${r.type}`).join(' · ');
-      const inWs  = workspaceNodeIds.has(n.id);
-      const btnHtml = inWs
-        ? `<span class="neighbor-add-btn in-ws">已在空间</span>`
-        : `<button class="neighbor-add-btn" onclick="addNodeToWorkspace('${n.id}')">加入</button>`;
-      return `
-        <div class="neighbor-item">
-          <div class="neighbor-dot" style="background:${color}"></div>
-          <div class="neighbor-info">
-            <div class="neighbor-name" title="${name}">${name}</div>
-            <div class="neighbor-meta">${label}${rels ? ' · ' + rels : ''}</div>
-          </div>
-          ${btnHtml}
-        </div>`;
-    }).join('') + '</div>';
+    const relTypes   = [...new Set(data.edges.map(e => e.type))].sort();
+    const labelTypes = [...new Set(neighbors.flatMap(n => n.labels || []))].sort();
+
+    _nbRawData = { neighbors, edgeMap, relTypes, labelTypes };
+
+    // Build filter bar + list area
+    const selStyle = 'background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 5px;font-size:11px;outline:none;min-width:0;';
+    container.innerHTML = `
+      <div style="display:flex;gap:5px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+        <select id="nb-filter-rel" onchange="_nbFilterRel=this.value;_renderNeighborList()"
+                style="${selStyle}flex:1" title="按关系类型过滤">
+          <option value="">所有关系</option>
+          ${relTypes.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <select id="nb-filter-dir" onchange="_nbFilterDir=this.value;_renderNeighborList()"
+                style="${selStyle}flex-shrink:0" title="按关系方向过滤">
+          <option value="">全方向</option>
+          <option value="out">→ 出向</option>
+          <option value="in">← 入向</option>
+        </select>
+        <select id="nb-filter-lbl" onchange="_nbFilterLbl=this.value;_renderNeighborList()"
+                style="${selStyle}flex:1" title="按节点标签过滤">
+          <option value="">所有标签</option>
+          ${labelTypes.map(l => `<option value="${l}">${l}</option>`).join('')}
+        </select>
+        <button onclick="addAllFilteredNeighbors()"
+                style="background:var(--accent);border:none;color:#000;font-weight:600;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0"
+                title="将过滤结果中所有未加入的节点批量加入工作空间">全部加入</button>
+      </div>
+      <div id="nb-list-wrap" class="neighbor-list"></div>`;
+
+    _renderNeighborList();
   } catch {
     container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载失败</div>';
   }
+}
+
+function _nbMatchesFilters(n) {
+  const rels = (_nbRawData.edgeMap[n.id] || []);
+  const relOk = !_nbFilterRel || rels.some(r => r.type === _nbFilterRel);
+  const dirOk = !_nbFilterDir || rels.some(r => r.dir === _nbFilterDir);
+  const lblOk = !_nbFilterLbl || (n.labels || []).includes(_nbFilterLbl);
+  return relOk && dirOk && lblOk;
+}
+
+function _renderNeighborList() {
+  if (!_nbRawData) return;
+  const wrap = document.getElementById('nb-list-wrap');
+  if (!wrap) return;
+
+  const filtered = _nbRawData.neighbors.filter(_nbMatchesFilters);
+
+  if (!filtered.length) {
+    wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">无匹配节点</div>';
+    return;
+  }
+
+  wrap.innerHTML = filtered.map(n => {
+    const color = getLabelColor(n.labels[0] || 'Node');
+    const name  = nodeLabel(n);
+    const lbl   = (n.labels || []).join(', ');
+    // Show only rels matching current filters
+    const rels  = (_nbRawData.edgeMap[n.id] || [])
+      .filter(r => (!_nbFilterRel || r.type === _nbFilterRel) && (!_nbFilterDir || r.dir === _nbFilterDir))
+      .map(r => `${r.dir === 'out' ? '→' : '←'} ${r.type}`)
+      .join(' · ');
+    const inWs = workspaceNodeIds.has(n.id);
+    const btn  = inWs
+      ? `<span class="neighbor-add-btn in-ws">已在空间</span>`
+      : `<button class="neighbor-add-btn" onclick="addNodeToWorkspace('${n.id}')">加入</button>`;
+    return `
+      <div class="neighbor-item">
+        <div class="neighbor-dot" style="background:${color}"></div>
+        <div class="neighbor-info">
+          <div class="neighbor-name" title="${name}">${name}</div>
+          <div class="neighbor-meta">${lbl}${rels ? ' · ' + rels : ''}</div>
+        </div>
+        ${btn}
+      </div>`;
+  }).join('');
+}
+
+async function addAllFilteredNeighbors() {
+  if (!_nbRawData || !currentWorkspace) return;
+  const toAdd = _nbRawData.neighbors
+    .filter(_nbMatchesFilters)
+    .filter(n => !workspaceNodeIds.has(n.id))
+    .map(n => n.id);
+
+  if (!toAdd.length) { toast('⚠️ 过滤结果中无新节点可加入', 'err'); return; }
+
+  try {
+    await api('POST', `/workspaces/${currentWorkspace.id}/nodes`, { node_ids: toAdd });
+
+    const data = await api('GET', `/workspaces/${currentWorkspace.id}/graph`);
+    workspaceNodeIds = new Set(data.nodes.map(n => n.id));
+
+    data.nodes.forEach(n => {
+      if (!visNodes.get(n.id)) {
+        const lk = lockedEntities.get(n.id);
+        visNodes.add(lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n));
+      }
+    });
+    data.edges.forEach(e => { if (!visEdges.get(e.id)) visEdges.add(makeVisEdge(e)); });
+
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws) ws.node_count = data.nodes.length;
+    _renderWorkspaceSelect();
+
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 2000);
+    updateStats(); updateEmptyState();
+    toast(`✅ 已加入 ${toAdd.length} 个节点`);
+
+    _renderNeighborList(); // refresh badges
+  } catch {}
 }
 
 // ── Button bindings ───────────────────────────────────────────────────────────
