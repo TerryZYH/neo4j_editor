@@ -114,3 +114,22 @@ async def force_unlock(entity_id: str, _=Depends(require_admin)):
     ws.force_release(entity_id)
     await ws.broadcast({"type": "entity_unlocked", "entity_id": entity_id})
     return {"ok": True}
+
+
+# ── Workspaces overview ────────────────────────────────────────────────────────
+
+@router.get("/workspaces")
+def list_all_workspaces(_=Depends(require_admin)):
+    """Admin view: all workspaces across all users."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT w.id, w.name, w.created_at, w.updated_at,
+                      u.username AS owner,
+                      (SELECT COUNT(*) FROM workspace_nodes wn
+                       WHERE wn.workspace_id = w.id) AS node_count
+               FROM workspaces w
+               JOIN users u ON u.id = w.owner_id
+               ORDER BY w.updated_at DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]

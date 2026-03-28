@@ -652,6 +652,61 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ── Workspace ── */
+    .workspace-select-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    }
+    .workspace-select-row select {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 5px 8px; font-size: 12px;
+      outline: none; cursor: pointer;
+    }
+    .workspace-select-row select:focus { border-color: var(--accent); }
+    .ws-badge {
+      font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;
+      background: var(--accent); color: #000; white-space: nowrap; flex-shrink: 0;
+    }
+    .ws-controls { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+
+    /* ── Inspector tabs ── */
+    .inspector-tabs {
+      display: flex; border-bottom: 1px solid var(--border);
+      padding: 0 16px; gap: 4px; flex-shrink: 0;
+    }
+    .inspector-tab {
+      padding: 7px 12px; font-size: 12px; font-weight: 500; cursor: pointer;
+      color: var(--text-muted); border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .inspector-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .inspector-tab:hover:not(.active) { color: var(--text); }
+
+    /* ── Neighbor list ── */
+    .neighbor-list { display: flex; flex-direction: column; gap: 6px; }
+    .neighbor-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 6px; background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .neighbor-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .neighbor-info { flex: 1; min-width: 0; }
+    .neighbor-name {
+      font-size: 12px; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .neighbor-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .neighbor-add-btn {
+      background: none; border: 1px solid var(--accent); color: var(--accent);
+      border-radius: 5px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0; transition: background .1s;
+    }
+    .neighbor-add-btn:hover { background: var(--accent); color: #000; }
+    .neighbor-add-btn.in-ws {
+      border-color: var(--success); color: var(--success); cursor: default;
+    }
+    .neighbor-add-btn.in-ws:hover { background: none; color: var(--success); }
   </style>
 </head>
 <body>
@@ -756,6 +811,26 @@
 
   <!-- Left sidebar -->
   <aside class="sidebar">
+
+    <!-- Workspace section -->
+    <div class="sidebar-section" id="workspace-section">
+      <div class="sidebar-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        工作空间
+        <button class="btn" style="padding:2px 8px;font-size:11px;height:auto" onclick="openCreateWorkspaceModal()">＋ 新建</button>
+      </div>
+      <div class="workspace-select-row">
+        <select id="workspace-select" onchange="onWorkspaceSelectChange(this.value)">
+          <option value="">全图模式</option>
+        </select>
+      </div>
+      <!-- Controls visible only in workspace mode -->
+      <div class="ws-controls" id="ws-controls" style="display:none">
+        <button class="btn" style="font-size:12px;justify-content:center" onclick="openFilterModal()">🔍 按条件筛选加入</button>
+        <button class="btn" style="font-size:12px;justify-content:center" onclick="renameCurrentWorkspace()">✏️ 重命名</button>
+        <button class="btn danger" style="font-size:12px;justify-content:center" onclick="deleteCurrentWorkspace()">删除工作空间</button>
+      </div>
+    </div>
+
     <div class="sidebar-section">
       <div class="sidebar-title">统计</div>
       <div class="stats-grid">
@@ -809,7 +884,13 @@
       <div class="inspector-title" id="inspector-title">属性</div>
       <button class="inspector-close" id="inspector-close">×</button>
     </div>
+    <!-- Tabs: only shown in workspace mode when a node is selected -->
+    <div class="inspector-tabs" id="inspector-tabs" style="display:none">
+      <div class="inspector-tab active" id="itab-props"      onclick="setInspectorTab('props')">属性</div>
+      <div class="inspector-tab"        id="itab-neighbors"  onclick="setInspectorTab('neighbors')">邻居节点</div>
+    </div>
     <div class="inspector-body" id="inspector-body"></div>
+    <div id="inspector-neighbors-body" style="display:none;flex:1;overflow-y:auto;padding:12px 16px"></div>
     <div class="inspector-footer" id="inspector-footer"></div>
   </aside>
 </div>
@@ -1020,6 +1101,84 @@
   </div>
 </div>
 
+<!-- ── Workspace create modal ───────────────────────────── -->
+<div class="modal-overlay hidden" id="ws-create-modal">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <div class="modal-title">新建工作空间</div>
+      <button class="modal-close" onclick="closeModal('ws-create-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin:0">
+        <label>工作空间名称</label>
+        <input type="text" id="ws-name-input" placeholder="例: 纺织业供应链" maxlength="60" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('ws-create-modal')">取消</button>
+      <button class="btn primary" onclick="createWorkspace()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Workspace rename modal ───────────────────────────── -->
+<div class="modal-overlay hidden" id="ws-rename-modal">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <div class="modal-title">重命名工作空间</div>
+      <button class="modal-close" onclick="closeModal('ws-rename-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin:0">
+        <label>新名称</label>
+        <input type="text" id="ws-rename-input" placeholder="工作空间名称" maxlength="60" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('ws-rename-modal')">取消</button>
+      <button class="btn primary" onclick="confirmRenameWorkspace()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Workspace filter modal ───────────────────────────── -->
+<div class="modal-overlay hidden" id="ws-filter-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div class="modal-title">🔍 筛选节点加入工作空间</div>
+      <button class="modal-close" onclick="closeModal('ws-filter-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>筛选方式</label>
+        <select id="ws-filter-type" onchange="onFilterTypeChange()">
+          <option value="label">按节点标签</option>
+          <option value="property">按属性值</option>
+        </select>
+      </div>
+      <div id="ws-filter-label-row" class="form-group">
+        <label>节点标签</label>
+        <input type="text" id="ws-filter-label" placeholder="例: Company" list="ws-filter-labels-list" autocomplete="off" />
+        <datalist id="ws-filter-labels-list"></datalist>
+      </div>
+      <div id="ws-filter-prop-rows" style="display:none">
+        <div class="form-group">
+          <label>属性键</label>
+          <input type="text" id="ws-filter-prop-key" placeholder="例: domain" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>属性值</label>
+          <input type="text" id="ws-filter-prop-value" placeholder="例: 纺织业" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('ws-filter-modal')">取消</button>
+      <button class="btn primary" id="ws-filter-confirm-btn" onclick="applyWorkspaceFilter()">筛选并加入</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Toast container ─────────────────────────────────── -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -1123,6 +1282,13 @@ function getLabelColor(label) {
   return labelColorMap[label];
 }
 
+// ── Workspace state ───────────────────────────────────────────────────────────
+let currentWorkspace  = null;   // { id, name } | null = global mode
+let workspaceNodeIds  = new Set();  // element IDs whitelisted in current workspace
+let _workspaces       = [];     // cached list from server
+let _inspectorTab     = 'props'; // 'props' | 'neighbors'
+let _inspectorNodeId  = null;   // node currently shown in inspector
+
 // ── Graph state ───────────────────────────────────────────────────────────────
 let network = null;
 let visNodes = new vis.DataSet();
@@ -1191,7 +1357,7 @@ function onLoginSuccess(data) {
   checkStatus();
   refreshLabels();
   loadOntology();
-  loadGraph();
+  loadWorkspaces().then(() => loadCurrentView());
   setInterval(checkStatus, 30000);
 }
 
@@ -1356,20 +1522,28 @@ function handleWSMessage(msg) {
 
     case 'entity_created':
       if (msg.entity_type === 'node') {
-        if (!visNodes.get(msg.entity.id)) visNodes.add(makeVisNode(msg.entity));
+        // In workspace mode only add if whitelisted
+        if (!visNodes.get(msg.entity.id) &&
+            (!currentWorkspace || workspaceNodeIds.has(msg.entity.id))) {
+          visNodes.add(makeVisNode(msg.entity));
+        }
       } else {
-        if (!visEdges.get(msg.entity.id)) visEdges.add(makeVisEdge(msg.entity));
+        // Edge: add only if both endpoints are visible
+        if (!visEdges.get(msg.entity.id) &&
+            visNodes.get(msg.entity.source) && visNodes.get(msg.entity.target)) {
+          visEdges.add(makeVisEdge(msg.entity));
+        }
       }
       updateStats(); updateEmptyState();
       break;
 
     case 'entity_updated':
       if (msg.entity_type === 'node') {
-        const existing = visNodes.get(msg.entity.id);
         const lk = lockedEntities.get(msg.entity.id);
-        visNodes.update(lk ? makeVisNodeLocked(msg.entity, lk.username, lk.color) : makeVisNode(msg.entity));
-        // Refresh inspector if open on this node
-        if (selectedNodeIds.includes(msg.entity.id)) showNodeInspector(msg.entity);
+        if (visNodes.get(msg.entity.id)) {
+          visNodes.update(lk ? makeVisNodeLocked(msg.entity, lk.username, lk.color) : makeVisNode(msg.entity));
+          if (selectedNodeIds.includes(msg.entity.id)) showNodeInspector(msg.entity);
+        }
       } else {
         const existingE = visEdges.get(msg.entity.id);
         if (existingE) {
@@ -1381,6 +1555,8 @@ function handleWSMessage(msg) {
 
     case 'entity_deleted':
       if (msg.entity_type === 'node') {
+        // Also remove from workspace whitelist
+        workspaceNodeIds.delete(msg.entity_id);
         const connEdges = network ? network.getConnectedEdges(msg.entity_id) : [];
         visEdges.remove(connEdges);
         visNodes.remove(msg.entity_id);
@@ -1584,8 +1760,20 @@ function initNetwork() {
 }
 
 // ── Load graph ────────────────────────────────────────────────────────────────
+
+/** Load the correct view depending on whether we're in workspace mode or global mode. */
+async function loadCurrentView() {
+  if (currentWorkspace) {
+    await loadWorkspaceGraph(currentWorkspace.id);
+  } else {
+    await loadGraph();
+  }
+}
+
 async function loadGraph(labelFilter = '') {
-  const url = labelFilter ? `/graph?label=${encodeURIComponent(labelFilter)}&limit=300` : '/graph?limit=300';
+  const url = labelFilter
+    ? `/graph?label=${encodeURIComponent(labelFilter)}&limit=300`
+    : '/graph?limit=300';
   const data = await api('GET', url);
 
   visNodes.clear();
@@ -1598,31 +1786,56 @@ async function loadGraph(labelFilter = '') {
     const lk = lockedEntities.get(n.id);
     const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
     const pos = savedPositions[n.id];
-    if (pos) {
-      visNode.x = pos.x;
-      visNode.y = pos.y;
-      visNode.physics = false;
-    } else {
-      hasNewNodes = true;
-    }
+    if (pos) { visNode.x = pos.x; visNode.y = pos.y; visNode.physics = false; }
+    else { hasNewNodes = true; }
     return visNode;
   }));
   if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
 
   if (hasNewNodes) {
     network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => {
-      network.setOptions({ physics: { enabled: false } });
-      saveNodePositions();
-    }, 3000);
+    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 3000);
   } else {
     network.setOptions({ physics: { enabled: false } });
   }
 
-  updateStats();
-  updateEmptyState();
+  updateStats(); updateEmptyState();
   toast(`✅ 已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
   refreshLabels();
+}
+
+async function loadWorkspaceGraph(workspaceId) {
+  const data = await api('GET', `/workspaces/${workspaceId}/graph`);
+
+  // Rebuild whitelist
+  workspaceNodeIds = new Set(data.nodes.map(n => n.id));
+
+  visNodes.clear();
+  visEdges.clear();
+
+  const savedPositions = await loadNodePositions();
+  let hasNewNodes = false;
+
+  if (data.nodes.length) visNodes.add(data.nodes.map(n => {
+    const lk = lockedEntities.get(n.id);
+    const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
+    const pos = savedPositions[n.id];
+    if (pos) { visNode.x = pos.x; visNode.y = pos.y; visNode.physics = false; }
+    else { hasNewNodes = true; }
+    return visNode;
+  }));
+  if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
+
+  if (hasNewNodes) {
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 3000);
+  } else {
+    network.setOptions({ physics: { enabled: false } });
+  }
+
+  updateStats(); updateEmptyState();
+  const name = currentWorkspace ? currentWorkspace.name : '';
+  toast(`✅ 工作空间「${name}」已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
 }
 
 // ── Position persistence (server-side per user) ───────────────────────────────
@@ -1633,20 +1846,33 @@ let _allPositions = {};
 
 async function saveNodePositions() {
   if (!network || !currentUser) return;
-  Object.assign(_allPositions, network.getPositions());
-  try { await api('PUT', '/auth/positions', _allPositions); } catch {}
+  const positions = network.getPositions();
+  if (currentWorkspace) {
+    try { await api('PUT', `/workspaces/${currentWorkspace.id}/layout`, positions); } catch {}
+  } else {
+    Object.assign(_allPositions, positions);
+    try { await api('PUT', '/auth/positions', _allPositions); } catch {}
+  }
 }
 async function loadNodePositions() {
   if (!currentUser) return {};
   try {
-    _allPositions = await api('GET', '/auth/positions') || {};
-    return _allPositions;
+    if (currentWorkspace) {
+      return await api('GET', `/workspaces/${currentWorkspace.id}/layout`) || {};
+    } else {
+      _allPositions = await api('GET', '/auth/positions') || {};
+      return _allPositions;
+    }
   } catch { return {}; }
 }
 async function clearNodePositions() {
   if (!currentUser) return;
-  _allPositions = {};
-  try { await api('PUT', '/auth/positions', {}); } catch {}
+  if (currentWorkspace) {
+    try { await api('PUT', `/workspaces/${currentWorkspace.id}/layout`, {}); } catch {}
+  } else {
+    _allPositions = {};
+    try { await api('PUT', '/auth/positions', {}); } catch {}
+  }
 }
 
 // ── Stats & labels ────────────────────────────────────────────────────────────
@@ -1669,7 +1895,17 @@ async function refreshLabels() {
       const item = document.createElement('div');
       item.className = 'label-item';
       item.innerHTML = `<div class="label-dot" style="background:${color}"></div><span class="label-name">${lbl}</span>`;
-      item.onclick = () => loadGraph(lbl);
+      item.onclick = () => {
+        if (currentWorkspace) {
+          // In workspace mode: open filter modal pre-filled with this label
+          openFilterModal();
+          document.getElementById('ws-filter-type').value = 'label';
+          onFilterTypeChange();
+          document.getElementById('ws-filter-label').value = lbl;
+        } else {
+          loadGraph(lbl);
+        }
+      };
       list.appendChild(item);
     });
     if (!labels.length) list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">暂无标签</div>';
@@ -1705,12 +1941,29 @@ function onDeselect() {
 
 // ── Inspector ─────────────────────────────────────────────────────────────────
 function showNodeInspector(n) {
+  _inspectorNodeId = n.id;
+  _inspectorTab = 'props';
+
   document.getElementById('inspector-icon').textContent = '📦';
   document.getElementById('inspector-title').textContent = nodeLabel(n);
 
+  // Show tabs only in workspace mode
+  const tabsEl = document.getElementById('inspector-tabs');
+  tabsEl.style.display = currentWorkspace ? 'flex' : 'none';
+  document.getElementById('itab-props').classList.add('active');
+  document.getElementById('itab-neighbors').classList.remove('active');
+  document.getElementById('inspector-neighbors-body').style.display = 'none';
+  document.getElementById('inspector-body').style.display = '';
+
+  _renderNodePropsTab(n);
+  document.getElementById('inspector').classList.remove('hidden');
+}
+
+function _renderNodePropsTab(n) {
   const body   = document.getElementById('inspector-body');
   const footer = document.getElementById('inspector-footer');
-  const lk = lockedEntities.get(n.id);
+  const lk     = lockedEntities.get(n.id);
+  const inWs   = currentWorkspace && workspaceNodeIds.has(n.id);
 
   const labelTags = (n.labels || []).map(l =>
     `<span class="tag" style="background:${getLabelColor(l)}22;color:${getLabelColor(l)};border:1px solid ${getLabelColor(l)}44">${l}</span>`
@@ -1722,19 +1975,24 @@ function showNodeInspector(n) {
 
   body.innerHTML = `
     ${lk ? `<div id="inspector-lock-notice" class="lock-notice">🔒 正在被「${lk.username}」编辑，暂不可修改</div>` : ''}
+    ${currentWorkspace && !inWs ? `<div class="lock-notice" style="background:#58a6ff15;border-color:#58a6ff40;color:#58a6ff">此节点不在当前工作空间</div>` : ''}
     <div class="prop-section"><div class="prop-section-title">标签</div><div class="tag-list">${labelTags}</div></div>
     <div class="prop-section"><div class="prop-section-title">属性</div>${propsHtml}</div>
     <div class="prop-section"><div class="prop-section-title">ID</div><div class="prop-val" style="font-size:11px;word-break:break-all">${n.id}</div></div>
   `;
 
   const disabled = lk ? 'disabled style="opacity:.4"' : '';
+  const wsBtn = currentWorkspace
+    ? (inWs
+        ? `<button class="btn" onclick="removeNodeFromWorkspace('${n.id}')" style="font-size:12px">移出空间</button>`
+        : `<button class="btn primary" onclick="addNodeToWorkspace('${n.id}')" style="font-size:12px">加入空间</button>`)
+    : '';
   footer.innerHTML = `
-    <button class="btn primary" onclick="openCreateLinkedNodeModal('${n.id}')">＋ 关联节点</button>
-    <button class="btn" onclick="openEditNodeModal('${n.id}')" ${disabled}>✏️ 编辑</button>
-    <button class="btn danger" onclick="deleteNode('${n.id}')" ${disabled}>🗑 删除</button>
+    ${wsBtn}
+    <button class="btn primary" onclick="openCreateLinkedNodeModal('${n.id}')">＋ 关联</button>
+    <button class="btn" onclick="openEditNodeModal('${n.id}')" ${disabled}>✏️</button>
+    <button class="btn danger" onclick="deleteNode('${n.id}')" ${disabled}>🗑</button>
   `;
-
-  document.getElementById('inspector').classList.remove('hidden');
 }
 
 function showEdgeInspector(e) {
@@ -2278,6 +2536,15 @@ async function focusNode(nodeId) {
 // ── Expand neighbors ──────────────────────────────────────────────────────────
 document.getElementById('btn-expand').onclick = async () => {
   if (!selectedNodeIds.length) { toast('⚠️ 请先选中一个节点', 'err'); return; }
+  if (currentWorkspace) {
+    // In workspace mode: open neighbor tab in inspector instead
+    if (selectedNodeIds.length === 1) {
+      setInspectorTab('neighbors');
+    } else {
+      toast('⚠️ 工作空间模式下请单选一个节点查看邻居', 'err');
+    }
+    return;
+  }
   try {
     for (const nodeId of selectedNodeIds) {
       const data = await api('GET', `/node-neighbors/${nodeId}`);
@@ -2608,8 +2875,261 @@ function setupEdgeTypeField(currentType, ontologyTypes) {
   return el.value;
 }
 
+// ── Workspace functions ────────────────────────────────────────────────────────
+
+async function loadWorkspaces() {
+  try {
+    _workspaces = await api('GET', '/workspaces');
+    _renderWorkspaceSelect();
+  } catch { _workspaces = []; }
+}
+
+function _renderWorkspaceSelect() {
+  const sel = document.getElementById('workspace-select');
+  const current = currentWorkspace ? String(currentWorkspace.id) : '';
+  sel.innerHTML = '<option value="">全图模式</option>' +
+    _workspaces.map(w =>
+      `<option value="${w.id}" ${String(w.id) === current ? 'selected' : ''}>` +
+      `${w.name} (${w.node_count ?? 0}节点)</option>`
+    ).join('');
+}
+
+async function onWorkspaceSelectChange(val) {
+  if (!val) {
+    currentWorkspace = null;
+    workspaceNodeIds = new Set();
+    document.getElementById('ws-controls').style.display = 'none';
+    await loadGraph();
+  } else {
+    const ws = _workspaces.find(w => String(w.id) === val);
+    if (!ws) return;
+    currentWorkspace = { id: ws.id, name: ws.name };
+    document.getElementById('ws-controls').style.display = 'flex';
+    await loadWorkspaceGraph(ws.id);
+  }
+  hideInspector();
+}
+
+function openCreateWorkspaceModal() {
+  document.getElementById('ws-name-input').value = '';
+  document.getElementById('ws-create-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('ws-name-input').focus(), 50);
+}
+
+async function createWorkspace() {
+  const name = document.getElementById('ws-name-input').value.trim();
+  if (!name) { toast('请输入工作空间名称', 'err'); return; }
+  try {
+    const ws = await api('POST', '/workspaces', { name });
+    _workspaces.unshift({ ...ws });
+    currentWorkspace = { id: ws.id, name: ws.name };
+    workspaceNodeIds = new Set();
+    _renderWorkspaceSelect();
+    document.getElementById('ws-controls').style.display = 'flex';
+    closeModal('ws-create-modal');
+    visNodes.clear(); visEdges.clear();
+    updateStats(); updateEmptyState();
+    toast(`✅ 工作空间「${name}」已创建，使用「按条件筛选加入」或搜索节点后加入`);
+  } catch {}
+}
+
+function renameCurrentWorkspace() {
+  if (!currentWorkspace) return;
+  document.getElementById('ws-rename-input').value = currentWorkspace.name;
+  document.getElementById('ws-rename-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('ws-rename-input').focus(), 50);
+}
+
+async function confirmRenameWorkspace() {
+  const name = document.getElementById('ws-rename-input').value.trim();
+  if (!name || !currentWorkspace) return;
+  try {
+    await api('PUT', `/workspaces/${currentWorkspace.id}`, { name });
+    currentWorkspace.name = name;
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws) ws.name = name;
+    _renderWorkspaceSelect();
+    closeModal('ws-rename-modal');
+    toast(`✅ 已重命名为「${name}」`);
+  } catch {}
+}
+
+async function deleteCurrentWorkspace() {
+  if (!currentWorkspace) return;
+  if (!confirm(`确认删除工作空间「${currentWorkspace.name}」？\n图谱数据不受影响。`)) return;
+  try {
+    await api('DELETE', `/workspaces/${currentWorkspace.id}`);
+    _workspaces = _workspaces.filter(w => w.id !== currentWorkspace.id);
+    currentWorkspace = null;
+    workspaceNodeIds = new Set();
+    _renderWorkspaceSelect();
+    document.getElementById('ws-controls').style.display = 'none';
+    hideInspector();
+    await loadGraph();
+    toast('✅ 工作空间已删除，已切换至全图模式');
+  } catch {}
+}
+
+function openFilterModal() {
+  if (!currentWorkspace) return;
+  // Populate label datalist
+  api('GET', '/labels').then(labels => {
+    const dl = document.getElementById('ws-filter-labels-list');
+    dl.innerHTML = labels.map(l => `<option value="${l}">`).join('');
+  }).catch(() => {});
+  document.getElementById('ws-filter-type').value = 'label';
+  onFilterTypeChange();
+  document.getElementById('ws-filter-label').value = '';
+  document.getElementById('ws-filter-prop-key').value = '';
+  document.getElementById('ws-filter-prop-value').value = '';
+  document.getElementById('ws-filter-modal').classList.remove('hidden');
+}
+
+function onFilterTypeChange() {
+  const t = document.getElementById('ws-filter-type').value;
+  document.getElementById('ws-filter-label-row').style.display  = t === 'label'    ? '' : 'none';
+  document.getElementById('ws-filter-prop-rows').style.display  = t === 'property' ? '' : 'none';
+}
+
+async function applyWorkspaceFilter() {
+  if (!currentWorkspace) return;
+  const filterType = document.getElementById('ws-filter-type').value;
+  const btn = document.getElementById('ws-filter-confirm-btn');
+  btn.disabled = true; btn.textContent = '筛选中…';
+
+  let body;
+  if (filterType === 'label') {
+    const label = document.getElementById('ws-filter-label').value.trim();
+    if (!label) { toast('请填写节点标签', 'err'); btn.disabled = false; btn.textContent = '筛选并加入'; return; }
+    body = { filter_type: 'label', label };
+  } else {
+    const prop_key   = document.getElementById('ws-filter-prop-key').value.trim();
+    const prop_value = document.getElementById('ws-filter-prop-value').value.trim();
+    if (!prop_key || !prop_value) { toast('请填写属性键和属性值', 'err'); btn.disabled = false; btn.textContent = '筛选并加入'; return; }
+    body = { filter_type: 'property', prop_key, prop_value };
+  }
+
+  try {
+    const result = await api('POST', `/workspaces/${currentWorkspace.id}/filter`, body);
+    closeModal('ws-filter-modal');
+    if (result.added === 0) {
+      toast('未找到匹配节点', 'err'); return;
+    }
+    toast(`✅ 已加入 ${result.added} 个节点`);
+    // Refresh workspace graph
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws) ws.node_count = (ws.node_count || 0) + result.added;
+    _renderWorkspaceSelect();
+    await loadWorkspaceGraph(currentWorkspace.id);
+  } catch {
+  } finally {
+    btn.disabled = false; btn.textContent = '筛选并加入';
+  }
+}
+
+// Add / remove single node from current workspace
+async function addNodeToWorkspace(nodeId) {
+  if (!currentWorkspace) return;
+  try {
+    await api('POST', `/workspaces/${currentWorkspace.id}/nodes`, { node_ids: [nodeId] });
+    workspaceNodeIds.add(nodeId);
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws) ws.node_count = (ws.node_count || 0) + 1;
+    _renderWorkspaceSelect();
+    // Add to canvas
+    const nodeData = await api('GET', `/nodes/${nodeId}`);
+    if (!visNodes.get(nodeId)) visNodes.add(makeVisNode(nodeData));
+    // Add edges connecting this node to other workspace nodes
+    const nbData = await api('GET', `/node-neighbors/${nodeId}`);
+    nbData.edges.forEach(e => {
+      if (!visEdges.get(e.id) && workspaceNodeIds.has(e.source) && workspaceNodeIds.has(e.target)) {
+        visEdges.add(makeVisEdge(e));
+      }
+    });
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 2000);
+    updateStats(); updateEmptyState();
+    toast('✅ 已加入工作空间');
+    // Refresh inspector buttons
+    const vn = visNodes.get(nodeId);
+    if (vn && selectedNodeIds.includes(nodeId)) _renderNodePropsTab(vn._data);
+  } catch {}
+}
+
+async function removeNodeFromWorkspace(nodeId) {
+  if (!currentWorkspace) return;
+  try {
+    await api('DELETE', `/workspaces/${currentWorkspace.id}/nodes/${encodeURIComponent(nodeId)}`);
+    workspaceNodeIds.delete(nodeId);
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws && ws.node_count > 0) ws.node_count--;
+    _renderWorkspaceSelect();
+    // Remove from canvas
+    const connEdges = network ? network.getConnectedEdges(nodeId) : [];
+    visEdges.remove(connEdges);
+    visNodes.remove(nodeId);
+    updateStats(); updateEmptyState();
+    hideInspector();
+    toast('✅ 已从工作空间移除');
+  } catch {}
+}
+
+// ── Inspector tabs ─────────────────────────────────────────────────────────────
+
+function setInspectorTab(tab) {
+  _inspectorTab = tab;
+  document.getElementById('itab-props').classList.toggle('active', tab === 'props');
+  document.getElementById('itab-neighbors').classList.toggle('active', tab === 'neighbors');
+  document.getElementById('inspector-body').style.display           = tab === 'props'     ? '' : 'none';
+  document.getElementById('inspector-neighbors-body').style.display = tab === 'neighbors' ? '' : 'none';
+  document.getElementById('inspector-footer').style.display         = tab === 'props'     ? '' : 'none';
+  if (tab === 'neighbors' && _inspectorNodeId) loadNeighborPanel(_inspectorNodeId);
+}
+
+async function loadNeighborPanel(nodeId) {
+  const container = document.getElementById('inspector-neighbors-body');
+  container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载中…</div>';
+  try {
+    const data = await api('GET', `/node-neighbors/${nodeId}`);
+    const neighbors = data.nodes.filter(n => n.id !== nodeId);
+    if (!neighbors.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">无邻居节点</div>';
+      return;
+    }
+    // Build edge index for direction labels
+    const edgeMap = {};
+    data.edges.forEach(e => {
+      const other = e.source === nodeId ? e.target : e.source;
+      if (!edgeMap[other]) edgeMap[other] = [];
+      edgeMap[other].push({ type: e.type, dir: e.source === nodeId ? '→' : '←' });
+    });
+
+    container.innerHTML = '<div class="neighbor-list">' + neighbors.map(n => {
+      const color = getLabelColor(n.labels[0] || 'Node');
+      const name  = nodeLabel(n);
+      const label = (n.labels || []).join(', ');
+      const rels  = (edgeMap[n.id] || []).map(r => `${r.dir} ${r.type}`).join(' · ');
+      const inWs  = workspaceNodeIds.has(n.id);
+      const btnHtml = inWs
+        ? `<span class="neighbor-add-btn in-ws">已在空间</span>`
+        : `<button class="neighbor-add-btn" onclick="addNodeToWorkspace('${n.id}')">加入</button>`;
+      return `
+        <div class="neighbor-item">
+          <div class="neighbor-dot" style="background:${color}"></div>
+          <div class="neighbor-info">
+            <div class="neighbor-name" title="${name}">${name}</div>
+            <div class="neighbor-meta">${label}${rels ? ' · ' + rels : ''}</div>
+          </div>
+          ${btnHtml}
+        </div>`;
+    }).join('') + '</div>';
+  } catch {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载失败</div>';
+  }
+}
+
 // ── Button bindings ───────────────────────────────────────────────────────────
-document.getElementById('btn-load').onclick = () => loadGraph();
+document.getElementById('btn-load').onclick = () => loadCurrentView();
 document.getElementById('btn-add-node').onclick = openCreateNodeModal;
 document.getElementById('btn-add-edge').onclick = openCreateEdgeModal;
 document.getElementById('btn-delete').onclick = () => {
@@ -2725,7 +3245,7 @@ async function init() {
     checkStatus();
     refreshLabels();
     loadOntology();
-    loadGraph();
+    loadWorkspaces().then(() => loadCurrentView());
     setInterval(checkStatus, 30000);
   } catch {
     // Server might be starting up — stay on overlay

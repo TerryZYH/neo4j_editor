@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-from neo4j import GraphDatabase
 import os, json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -18,6 +17,8 @@ from ontology import (
     init_ontology_db, router as ontology_router,
     get_validation_mode, validate_node_labels, validate_relation_triple,
 )
+from graph_db import init_driver, get_driver, serialize_node, serialize_rel, NEO4J_URI
+from workspace import init_workspace_db, router as workspace_router
 
 load_dotenv()
 
@@ -32,28 +33,13 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(schemas_router)
 app.include_router(ontology_router)
+app.include_router(workspace_router)
 
 init_db()
 init_schema_db()
 init_ontology_db()
-
-NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
-
-try:
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-    driver.verify_connectivity()
-    print(f"✅ Connected to Neo4j at {NEO4J_URI}")
-except Exception as e:
-    print(f"⚠️  Neo4j connection failed: {e}")
-    driver = None
-
-
-def get_driver():
-    if driver is None:
-        raise HTTPException(status_code=503, detail="Neo4j not connected")
-    return driver
+init_workspace_db()
+init_driver()
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
