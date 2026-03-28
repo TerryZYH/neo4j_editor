@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from schemas import SCHEMA_DB_PATH
 
 
@@ -103,6 +103,10 @@ class RelationCreate(BaseModel):
     rel_type:     str
     source_label: str
     target_label: str
+    display_name: Optional[str] = None
+    description:  Optional[str] = None
+
+class RelationUpdate(BaseModel):
     display_name: Optional[str] = None
     description:  Optional[str] = None
 
@@ -235,6 +239,22 @@ def create_relation(data: RelationCreate, user=Depends(get_current_user)):
         raise HTTPException(400, "该关系三元组已存在")
 
 
+@router.put("/relations/{rid}")
+def update_relation(rid: int, data: RelationUpdate, user=Depends(get_current_user)):
+    updates, params = [], []
+    if data.display_name is not None: updates.append("display_name=?"); params.append(data.display_name)
+    if data.description  is not None: updates.append("description=?");  params.append(data.description)
+    if not updates:
+        raise HTTPException(400, "无可更新字段")
+    updates.append("updated_at=?"); params.append(_now()); params.append(rid)
+    with sqlite3.connect(SCHEMA_DB_PATH) as conn:
+        conn.execute(f"UPDATE relation_schemas SET {','.join(updates)} WHERE id=?", params)
+        conn.commit()
+        row = _row(conn, "SELECT * FROM relation_schemas WHERE id=?", rid)
+        if not row: raise HTTPException(404, "Relation 不存在")
+        return row
+
+
 @router.delete("/relations/{rid}")
 def delete_relation(rid: int, user=Depends(get_current_user)):
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:
@@ -255,7 +275,7 @@ def get_config(user=Depends(get_current_user)):
 
 
 @router.put("/config")
-def update_config(data: ConfigUpdate, user=Depends(get_current_user)):
+def update_config(data: ConfigUpdate, user=Depends(require_admin)):
     if data.validation_mode not in ("warn", "strict"):
         raise HTTPException(400, "validation_mode 必须是 warn 或 strict")
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:

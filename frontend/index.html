@@ -381,6 +381,21 @@
       gap: 8px;
     }
 
+    /* ── Import modal ── */
+    .import-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0;
+    }
+    .import-stat {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; text-align: center;
+    }
+    .import-stat-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .import-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .import-warning {
+      background: rgba(248,81,73,.1); border: 1px solid rgba(248,81,73,.3);
+      border-radius: 8px; padding: 12px; color: var(--danger); font-size: 13px; line-height: 1.5;
+    }
+
     .form-group { margin-bottom: 14px; }
     label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 500; }
     input[type="text"], input[type="password"], input[type="email"], select, textarea {
@@ -713,6 +728,11 @@
       <span class="role-badge" id="user-chip-role"></span>
     </div>
 
+    <!-- Export / Import (admin only) -->
+    <button class="btn" id="btn-export" style="display:none" title="导出全量数据为 JSON">⬇ 导出</button>
+    <button class="btn" id="btn-import" style="display:none" title="从 JSON 导入全量数据">⬆ 导入</button>
+    <input type="file" id="import-file-input" accept=".json" style="display:none" />
+
     <!-- Ontology link -->
     <a id="ontology-link" href="/ontology.html" target="_blank"
        class="btn" style="display:none;text-decoration:none">🧬 本体</a>
@@ -838,12 +858,56 @@
       <div class="form-group">
         <label>属性</label>
         <div class="props-editor" id="edge-props-editor"></div>
-        <button class="add-prop-btn" onclick="addPropRow('edge-props-editor')">＋ 添加属性</button>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('edge-modal')">取消</button>
       <button class="btn primary" id="edge-modal-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Linked node modal ─────────────────────────────────── -->
+<div class="modal-overlay hidden" id="linked-node-modal">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <div class="modal-title">新建关联节点</div>
+      <button class="modal-close" onclick="closeModal('linked-node-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">新节点</div>
+      <div class="form-group">
+        <label>节点标签（多个用逗号分隔）</label>
+        <input type="text" id="ln-node-labels" placeholder="例: Person" list="ln-labels-list" autocomplete="off" />
+        <datalist id="ln-labels-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label>节点属性</label>
+        <div class="props-editor" id="ln-node-props-editor"></div>
+        <button class="add-prop-btn" onclick="addPropRow('ln-node-props-editor')">＋ 添加属性</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:2px 0 14px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">关系</div>
+      <div style="display:flex;gap:10px">
+        <div class="form-group" style="flex:0 0 130px">
+          <label>方向</label>
+          <select id="ln-direction" onchange="onLnDirectionChange()">
+            <option value="out">向外 →</option>
+            <option value="in">← 向内</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1" id="ln-rel-type-wrap">
+          <label>关系类型</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>关系属性</label>
+        <div class="props-editor" id="ln-edge-props-editor"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('linked-node-modal')">取消</button>
+      <button class="btn primary" id="ln-save">保存</button>
     </div>
   </div>
 </div>
@@ -922,6 +986,40 @@
   </div>
 </div>
 
+<!-- ── Import confirm modal ────────────────────────────── -->
+<div class="modal-overlay hidden" id="import-modal">
+  <div class="modal" style="width:500px">
+    <div class="modal-header">
+      <div class="modal-title">⬆ 导入全量数据</div>
+      <button class="modal-close" onclick="closeModal('import-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">文件：<span id="import-filename" style="color:var(--text);font-weight:500"></span></p>
+      <div class="import-stats">
+        <div class="import-stat">
+          <div class="import-stat-value" id="import-stat-nodes">0</div>
+          <div class="import-stat-label">节点</div>
+        </div>
+        <div class="import-stat">
+          <div class="import-stat-value" id="import-stat-edges">0</div>
+          <div class="import-stat-label">关系</div>
+        </div>
+        <div class="import-stat">
+          <div class="import-stat-value" id="import-stat-schemas">0</div>
+          <div class="import-stat-label">Schema 条目</div>
+        </div>
+      </div>
+      <div class="import-warning">
+        ⚠️ 导入将<strong>清空</strong>当前所有图数据、Schema 及本体配置，并用文件中的数据完全替换。此操作不可撤销，请确认已备份。
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('import-modal')">取消</button>
+      <button class="btn danger" id="import-confirm-btn" onclick="confirmImport()">确认导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Toast container ─────────────────────────────────── -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -934,7 +1032,18 @@ const WS_URL  = 'ws://localhost:8000/ws';
 let ontology = { classes: [], relations: [], validation_mode: 'warn' };
 
 async function loadOntology() {
-  try { ontology = await api('GET', '/ontology'); } catch { /* ignore */ }
+  try {
+    ontology = await api('GET', '/ontology');
+    // Refresh node colors if graph is already loaded
+    if (visNodes) {
+      const updates = visNodes.get().map(n => {
+        const color = getLabelColor((n._data && n._data.labels && n._data.labels[0]) || 'Node');
+        return { id: n.id, color: { background: color, border: color, highlight: { background: color, border: '#fff' } } };
+      });
+      if (updates.length) visNodes.update(updates);
+      refreshLabels();
+    }
+  } catch { /* ignore */ }
 }
 
 // Get valid rel_types for a given (src_labels, tgt_labels) pair
@@ -1004,6 +1113,10 @@ const PALETTE = [
 const labelColorMap = {};
 let colorIdx = 0;
 function getLabelColor(label) {
+  // Prefer ontology-defined color
+  const cls = ontology.classes && ontology.classes.find(c => c.label_name === label);
+  if (cls && cls.color) return cls.color;
+  // Fall back to stable palette assignment
   if (!labelColorMap[label]) {
     labelColorMap[label] = PALETTE[colorIdx++ % PALETTE.length];
   }
@@ -1114,6 +1227,8 @@ function initUserUI() {
   document.getElementById('ontology-link').style.display = 'flex';
   if (currentUser.role === 'admin') {
     document.getElementById('admin-link').style.display = 'flex';
+    document.getElementById('btn-export').style.display = 'flex';
+    document.getElementById('btn-import').style.display = 'flex';
   }
 }
 
@@ -1394,7 +1509,7 @@ function makeVisNodeLocked(n, username, lockColor) {
   return {
     id: n.id,
     label: `${nodeLabel(n)}\n🔒 ${username}`,
-    title: `<div style="max-width:200px">🔒 <b>正在被「${username}」编辑</b></div>`,
+    title: (() => { const el = document.createElement('div'); el.style.cssText = 'max-width:220px;padding:8px 10px;background:#161b22;border:1px solid #30363d;border-radius:6px;font-size:12px;color:#c9d1d9;'; el.textContent = `🔒 正在被「${username}」编辑`; return el; })(),
     color: { background: color, border: lockColor, highlight: { background: color, border: lockColor } },
     font: { color: '#fff', size: 12, face: 'sans-serif' },
     borderWidth: 4,
@@ -1419,8 +1534,24 @@ function makeVisEdge(e) {
 
 function formatTooltip(labels, props) {
   const entries = Object.entries(props || {});
-  const propsHtml = entries.map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>');
-  return `<div style="max-width:200px"><b>[${(labels||[]).join(', ')}]</b><br>${propsHtml}</div>`;
+  const el = document.createElement('div');
+  el.style.cssText = 'max-width:220px;padding:8px 10px;background:#161b22;border:1px solid #30363d;border-radius:6px;font-size:12px;line-height:1.6;color:#c9d1d9;pointer-events:none;';
+  const header = document.createElement('div');
+  header.style.cssText = 'font-weight:600;color:#58a6ff;margin-bottom:4px;';
+  header.textContent = `[${(labels || []).join(', ')}]`;
+  el.appendChild(header);
+  entries.forEach(([k, v]) => {
+    const row = document.createElement('div');
+    const key = document.createElement('span');
+    key.style.cssText = 'color:#8b949e;';
+    key.textContent = k + ': ';
+    const val = document.createElement('span');
+    val.textContent = String(v);
+    row.appendChild(key);
+    row.appendChild(val);
+    el.appendChild(row);
+  });
+  return el;
 }
 
 // ── Build network ─────────────────────────────────────────────────────────────
@@ -1445,7 +1576,10 @@ function initNetwork() {
   network.on('deselectNode', onDeselect);
   network.on('deselectEdge', onDeselect);
   network.on('doubleClick', onDoubleClick);
-  network.on('stabilizationIterationsDone', () => network.setOptions({ physics: { enabled: false } }));
+  network.on('stabilizationIterationsDone', () => {
+    network.setOptions({ physics: { enabled: false } });
+  });
+  network.on('dragEnd', params => { if (params.nodes.length > 0) saveNodePositions(); });
   updateEmptyState();
 }
 
@@ -1457,19 +1591,62 @@ async function loadGraph(labelFilter = '') {
   visNodes.clear();
   visEdges.clear();
 
+  const savedPositions = await loadNodePositions();
+  let hasNewNodes = false;
+
   if (data.nodes.length) visNodes.add(data.nodes.map(n => {
     const lk = lockedEntities.get(n.id);
-    return lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
+    const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
+    const pos = savedPositions[n.id];
+    if (pos) {
+      visNode.x = pos.x;
+      visNode.y = pos.y;
+      visNode.physics = false;
+    } else {
+      hasNewNodes = true;
+    }
+    return visNode;
   }));
   if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
 
-  network.setOptions({ physics: { enabled: true } });
-  setTimeout(() => network.setOptions({ physics: { enabled: false } }), 3000);
+  if (hasNewNodes) {
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => {
+      network.setOptions({ physics: { enabled: false } });
+      saveNodePositions();
+    }, 3000);
+  } else {
+    network.setOptions({ physics: { enabled: false } });
+  }
 
   updateStats();
   updateEmptyState();
   toast(`✅ 已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
   refreshLabels();
+}
+
+// ── Position persistence (server-side per user) ───────────────────────────────
+// _allPositions caches the full set of node positions across all label filters.
+// When only a subset of nodes is loaded, we merge into this cache so positions
+// of currently-hidden nodes are never overwritten.
+let _allPositions = {};
+
+async function saveNodePositions() {
+  if (!network || !currentUser) return;
+  Object.assign(_allPositions, network.getPositions());
+  try { await api('PUT', '/auth/positions', _allPositions); } catch {}
+}
+async function loadNodePositions() {
+  if (!currentUser) return {};
+  try {
+    _allPositions = await api('GET', '/auth/positions') || {};
+    return _allPositions;
+  } catch { return {}; }
+}
+async function clearNodePositions() {
+  if (!currentUser) return;
+  _allPositions = {};
+  try { await api('PUT', '/auth/positions', {}); } catch {}
 }
 
 // ── Stats & labels ────────────────────────────────────────────────────────────
@@ -1552,6 +1729,7 @@ function showNodeInspector(n) {
 
   const disabled = lk ? 'disabled style="opacity:.4"' : '';
   footer.innerHTML = `
+    <button class="btn primary" onclick="openCreateLinkedNodeModal('${n.id}')">＋ 关联节点</button>
     <button class="btn" onclick="openEditNodeModal('${n.id}')" ${disabled}>✏️ 编辑</button>
     <button class="btn danger" onclick="deleteNode('${n.id}')" ${disabled}>🗑 删除</button>
   `;
@@ -1792,8 +1970,7 @@ async function deleteSelected() {
 async function openCreateEdgeModal() {
   if (selectedNodeIds.length !== 2) { toast('⚠️ 请先选中两个节点（按住 Ctrl 多选）', 'err'); return; }
   document.getElementById('edge-modal-title').textContent = '新建关系';
-  await loadSchemasCache();
-  await loadRelTypes();
+  await Promise.all([loadOntology(), loadSchemasCache(), loadRelTypes()]);
 
   // Determine valid rel_types from ontology based on selected node labels
   const srcNode = visNodes.get(selectedNodeIds[0]);
@@ -1802,16 +1979,157 @@ async function openCreateEdgeModal() {
   const tgtLabels = tgtNode ? (tgtNode._data.labels || []) : [];
   const validTypes = getValidRelTypes(srcLabels, tgtLabels);
 
-  // validTypes === null means no ontology constraints → use all known types
-  if (validTypes !== null) {
-    window._cachedRelTypes = validTypes.length ? validTypes : (window._cachedRelTypes || []);
-    if (!validTypes.length) toast('⚠️ 本体中没有这两类节点之间允许的关系类型', 'err');
+  if (validTypes !== null && !validTypes.length) {
+    toast('⚠️ 本体中没有这两类节点之间允许的关系类型', 'err');
   }
 
-  setupEdgeTypeField('');
-  clearPropsEditor('edge-props-editor');
+  // Pass ontology-valid types directly to setupEdgeTypeField so they appear as a select
+  const initialType = setupEdgeTypeField('', validTypes);
+  if (initialType) {
+    await buildSchemaEditor('edge-props-editor', 'edge', [initialType], {});
+  } else {
+    clearPropsEditor('edge-props-editor');
+  }
   document.getElementById('edge-modal').classList.remove('hidden');
   document.getElementById('edge-modal-save').onclick = () => saveNewEdge(selectedNodeIds[0], selectedNodeIds[1], srcLabels, tgtLabels);
+}
+
+// ── Create linked node ────────────────────────────────────────────────────────
+let _lnSourceId = null;
+let _lnNodeLabelTimer, _lnRelTypeTimer;
+
+async function openCreateLinkedNodeModal(nodeId) {
+  _lnSourceId = nodeId;
+  await Promise.all([loadOntology(), loadSchemasCache()]);
+
+  document.getElementById('ln-labels-list').innerHTML = ontology.classes.map(c =>
+    `<option value="${c.label_name}">${c.display_name || c.label_name}</option>`
+  ).join('');
+
+  document.getElementById('ln-direction').value = 'out';
+  document.getElementById('ln-node-labels').value = '';
+  clearPropsEditor('ln-node-props-editor');
+  addPropRow('ln-node-props-editor', 'name', '');
+
+  _lnUpdateRelTypes();
+
+  document.getElementById('ln-node-labels').oninput = () => {
+    _lnUpdateRelTypes(); // immediate: rel types depend on node label
+    clearTimeout(_lnNodeLabelTimer);
+    _lnNodeLabelTimer = setTimeout(async () => {
+      const labels = document.getElementById('ln-node-labels').value.split(',').map(l => l.trim()).filter(Boolean);
+      if (labels.length) {
+        const cur = collectProps('ln-node-props-editor');
+        await buildSchemaEditor('ln-node-props-editor', 'node', labels, cur);
+      }
+    }, 400);
+  };
+
+  document.getElementById('ln-save').onclick = saveLinkedNode;
+  document.getElementById('linked-node-modal').classList.remove('hidden');
+  document.getElementById('ln-node-labels').focus();
+}
+
+function onLnDirectionChange() { _lnUpdateRelTypes(); }
+
+function _lnUpdateRelTypes() {
+  const direction = document.getElementById('ln-direction').value;
+  const srcNode = visNodes.get(_lnSourceId);
+  const nodeLabels = srcNode ? (srcNode._data.labels || []) : [];
+  const newLabels = (document.getElementById('ln-node-labels').value || '')
+    .split(',').map(l => l.trim()).filter(Boolean);
+
+  // Get valid types: filter ontology by current node side; optionally also filter by new node side
+  let validTypes = null;
+  if (ontology.relations.length) {
+    const valid = new Set();
+    ontology.relations.forEach(r => {
+      const myOk = direction === 'out'
+        ? (r.source_label === '*' || nodeLabels.some(l => l === r.source_label))
+        : (r.target_label === '*' || nodeLabels.some(l => l === r.target_label));
+      if (!myOk) return;
+      if (newLabels.length) {
+        const otherOk = direction === 'out'
+          ? (r.target_label === '*' || newLabels.some(l => l === r.target_label))
+          : (r.source_label === '*' || newLabels.some(l => l === r.source_label));
+        if (!otherOk) return;
+      }
+      valid.add(r.rel_type);
+    });
+    validTypes = [...valid];
+    // If filtering by new labels makes it empty, fall back to just filtering by current node
+    if (!validTypes.length && newLabels.length) {
+      ontology.relations.forEach(r => {
+        const myOk = direction === 'out'
+          ? (r.source_label === '*' || nodeLabels.some(l => l === r.source_label))
+          : (r.target_label === '*' || nodeLabels.some(l => l === r.target_label));
+        if (myOk) valid.add(r.rel_type);
+      });
+      validTypes = [...valid];
+    }
+  }
+
+  const wrap = document.getElementById('ln-rel-type-wrap');
+  const prevType = document.getElementById('ln-rel-type') ? document.getElementById('ln-rel-type').value : '';
+
+  if (validTypes && validTypes.length) {
+    const selected = validTypes.includes(prevType) ? prevType : validTypes[0];
+    const opts = validTypes.map(v =>
+      `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    wrap.innerHTML = `<label>关系类型</label><select id="ln-rel-type">${opts}</select>`;
+    document.getElementById('ln-rel-type').addEventListener('change', async () => {
+      const type = document.getElementById('ln-rel-type').value;
+      if (type) await buildSchemaEditor('ln-edge-props-editor', 'edge', [type], collectProps('ln-edge-props-editor'));
+    });
+    buildSchemaEditor('ln-edge-props-editor', 'edge', [selected], collectProps('ln-edge-props-editor'));
+  } else {
+    wrap.innerHTML = `<label>关系类型</label><input type="text" id="ln-rel-type" placeholder="例: KNOWS" value="${prevType}" />`;
+    document.getElementById('ln-rel-type').addEventListener('input', () => {
+      clearTimeout(_lnRelTypeTimer);
+      _lnRelTypeTimer = setTimeout(async () => {
+        const type = document.getElementById('ln-rel-type').value.trim().toUpperCase();
+        if (type) await buildSchemaEditor('ln-edge-props-editor', 'edge', [type], collectProps('ln-edge-props-editor'));
+      }, 400);
+    });
+    if (prevType) buildSchemaEditor('ln-edge-props-editor', 'edge', [prevType], collectProps('ln-edge-props-editor'));
+    else clearPropsEditor('ln-edge-props-editor');
+  }
+}
+
+async function saveLinkedNode() {
+  const labelsRaw = document.getElementById('ln-node-labels').value.trim();
+  const labels = labelsRaw ? labelsRaw.split(',').map(l => l.trim()).filter(Boolean) : ['Node'];
+  if (!checkOntologyLabels(labels)) return;
+
+  const relTypeEl = document.getElementById('ln-rel-type');
+  const relType = (relTypeEl ? relTypeEl.value.trim().toUpperCase() : '') || 'RELATES_TO';
+  const direction = document.getElementById('ln-direction').value;
+
+  const srcNode = visNodes.get(_lnSourceId);
+  const srcLabels = srcNode ? (srcNode._data.labels || []) : [];
+  if (direction === 'out') { if (!checkOntologyTriple(srcLabels, relType, labels)) return; }
+  else                     { if (!checkOntologyTriple(labels, relType, srcLabels)) return; }
+
+  const nodeProps = collectProps('ln-node-props-editor');
+  const edgeProps = collectProps('ln-edge-props-editor');
+  try {
+    const newNode = await api('POST', '/nodes', { labels, properties: nodeProps });
+    visNodes.add(makeVisNode(newNode));
+
+    const sourceEid = direction === 'out' ? _lnSourceId : newNode.id;
+    const targetEid = direction === 'out' ? newNode.id : _lnSourceId;
+    const edge = await api('POST', '/relationships/by-element-id?' +
+      new URLSearchParams({ source_element_id: sourceEid, target_element_id: targetEid, type: relType }));
+    if (Object.keys(edgeProps).length) await api('PUT', `/relationships/${edge.id}`, { properties: edgeProps });
+    visEdges.add(makeVisEdge(Object.keys(edgeProps).length ? { ...edge, properties: edgeProps } : edge));
+
+    updateStats();
+    closeModal('linked-node-modal');
+    toast('✅ 关联节点已创建');
+    network.selectNodes([newNode.id]);
+    setTimeout(() => network.focus(newNode.id, { scale: 1.2, animation: true }), 100);
+  } catch (e) { toast('创建失败: ' + (e.message || e), 'err'); }
 }
 
 async function loadRelTypes() {
@@ -1856,8 +2174,7 @@ async function openEditEdgeModal(edgeId) {
   const e = visEdge._data;
 
   document.getElementById('edge-modal-title').textContent = '编辑关系';
-  await loadSchemasCache();
-  await loadRelTypes();
+  await Promise.all([loadOntology(), loadSchemasCache(), loadRelTypes()]);
   setupEdgeTypeField(e.type || '');
   await buildSchemaEditor('edge-props-editor', 'edge', [e.type || ''], e.properties || {});
   document.getElementById('edge-modal').classList.remove('hidden');
@@ -2077,6 +2394,10 @@ function openSchemaEditModal(id) {
     document.getElementById('se-entity-type').value = 'node';
     document.getElementById('se-entity-label').value = '';
     document.getElementById('se-prop-key').value = '';
+    document.getElementById('se-prop-key').readOnly = false;
+    document.getElementById('se-prop-key').style.opacity = '';
+    const hint = document.getElementById('se-prop-key-hint');
+    if (hint) hint.remove();
     document.getElementById('se-required').checked = false;
     document.getElementById('se-default-val').value = '';
     document.getElementById('se-description').value = '';
@@ -2087,7 +2408,18 @@ function openSchemaEditModal(id) {
     document.getElementById('schema-edit-title').textContent = '编辑属性模板';
     document.getElementById('se-entity-type').value = s.entity_type;
     document.getElementById('se-entity-label').value = s.entity_label;
-    document.getElementById('se-prop-key').value = s.prop_key;
+    const propKeyEl = document.getElementById('se-prop-key');
+    propKeyEl.value = s.prop_key;
+    propKeyEl.readOnly = true;
+    propKeyEl.style.opacity = '0.6';
+    // Show hint if not already present
+    if (!document.getElementById('se-prop-key-hint')) {
+      const hint = document.createElement('div');
+      hint.id = 'se-prop-key-hint';
+      hint.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:4px';
+      hint.textContent = '属性键不可修改。如需更名，请删除后重建。';
+      propKeyEl.parentElement.appendChild(hint);
+    }
     document.getElementById('se-required').checked = s.required;
     document.getElementById('se-default-val').value = s.default_val || '';
     document.getElementById('se-description').value = s.description || '';
@@ -2105,15 +2437,22 @@ function onSchemaEntityTypeChange() {
     ? '关系类型 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有类型）</span>'
     : '节点标签 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有标签）</span>';
   // Show/hide prop key field — for edge __rel_type__ it's a special key
+  const _pkCurrent = document.getElementById('se-prop-key');
+  const _pkVal     = _pkCurrent ? _pkCurrent.value : '';
+  const _pkRO      = _pkCurrent ? _pkCurrent.readOnly : false;
+  const _pkOpacity = _pkCurrent ? _pkCurrent.style.opacity : '';
   if (isEdge) {
     document.getElementById('se-propkey-group').innerHTML = `
       <label>属性键 <span style="color:var(--text-muted);font-weight:400">（填 __rel_type__ 约束关系类型本身）</span></label>
-      <input type="text" id="se-prop-key" placeholder="例: role 或 __rel_type__" value="${document.getElementById('se-prop-key')?.value || ''}" />`;
+      <input type="text" id="se-prop-key" placeholder="例: role 或 __rel_type__" value="${_pkVal}" />`;
   } else {
     document.getElementById('se-propkey-group').innerHTML = `
       <label>属性键</label>
-      <input type="text" id="se-prop-key" placeholder="例: status" value="${document.getElementById('se-prop-key')?.value || ''}" />`;
+      <input type="text" id="se-prop-key" placeholder="例: status" value="${_pkVal}" />`;
   }
+  const newPkEl = document.getElementById('se-prop-key');
+  newPkEl.readOnly = _pkRO;
+  newPkEl.style.opacity = _pkOpacity;
 }
 
 function renderEnumChips() {
@@ -2201,9 +2540,9 @@ async function buildSchemaEditor(editorId, entityType, entityLabels, existingPro
     addPropRow(editorId, k, String(v), schemaByKey[k] || null);
     added.add(k);
   }
-  // Required props not yet present
+  // All schema-defined props not yet present
   for (const s of applicable) {
-    if (s.required && !added.has(s.prop_key)) {
+    if (!added.has(s.prop_key)) {
       addPropRow(editorId, s.prop_key, s.default_val || '', s);
     }
   }
@@ -2221,24 +2560,52 @@ function getSchemasForLabels(entityType, entityLabels) {
   return result;
 }
 
-// Set edge-type field: select if __rel_type__ schema exists, otherwise plain input
-function setupEdgeTypeField(currentType) {
+// Set edge-type field: select if ontology types or __rel_type__ schema available, otherwise plain input
+// ontologyTypes: string[] | null  (null = no constraint; [] = no valid types; [...] = constrained list)
+let _edgeTypeTimer;
+function setupEdgeTypeField(currentType, ontologyTypes) {
   const wrap = document.getElementById('edge-type-wrap');
-  const relTypeSchema = schemasCache.find(s =>
-    s.entity_type === 'edge' && s.prop_key === '__rel_type__' && s.enum_values.length > 0
-  );
-  if (relTypeSchema) {
-    const opts = relTypeSchema.enum_values.map(v =>
+
+  // Priority: ontology-valid types > __rel_type__ enum schema > free text input
+  let selectOptions = null;
+  if (ontologyTypes && ontologyTypes.length > 0) {
+    selectOptions = ontologyTypes;
+  } else {
+    const relTypeSchema = schemasCache.find(s =>
+      s.entity_type === 'edge' && s.prop_key === '__rel_type__' && s.enum_values.length > 0
+    );
+    if (relTypeSchema) selectOptions = relTypeSchema.enum_values;
+  }
+
+  const isSelect = !!selectOptions;
+  if (isSelect) {
+    const opts = selectOptions.map(v =>
       `<option value="${v}" ${v === currentType ? 'selected' : ''}>${v}</option>`
     ).join('');
     wrap.innerHTML = `<select id="edge-type">${opts}</select>`;
   } else {
-    const types = window._cachedRelTypes || [];
+    const types = (ontologyTypes === null ? (window._cachedRelTypes || []) : []);
     const dl = types.map(t => `<option value="${t}">`).join('');
     wrap.innerHTML = `
       <input type="text" id="edge-type" placeholder="例: KNOWS, WORKS_AT" value="${currentType}" list="rel-types-list" />
       <datalist id="rel-types-list">${dl}</datalist>`;
   }
+  const el = document.getElementById('edge-type');
+  if (isSelect) {
+    el.addEventListener('change', async () => {
+      const type = el.value;
+      if (type) await buildSchemaEditor('edge-props-editor', 'edge', [type], collectProps('edge-props-editor'));
+    });
+  } else {
+    el.addEventListener('input', () => {
+      clearTimeout(_edgeTypeTimer);
+      _edgeTypeTimer = setTimeout(async () => {
+        const type = el.value.trim().toUpperCase();
+        if (type) await buildSchemaEditor('edge-props-editor', 'edge', [type], collectProps('edge-props-editor'));
+      }, 400);
+    });
+  }
+  return el.value;
 }
 
 // ── Button bindings ───────────────────────────────────────────────────────────
@@ -2252,14 +2619,89 @@ document.getElementById('btn-delete').onclick = () => {
 };
 document.getElementById('btn-schemas').onclick = openSchemasModal;
 document.getElementById('btn-fit').onclick = () => network && network.fit({ animation: true });
-document.getElementById('btn-layout').onclick = () => {
+document.getElementById('btn-layout').onclick = async () => {
   if (!network) return;
+  await clearNodePositions();
+  const updates = visNodes.getIds().map(id => ({ id, physics: true }));
+  if (updates.length) visNodes.update(updates);
   network.setOptions({ physics: { enabled: true } });
-  setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2500);
+  setTimeout(() => {
+    network.setOptions({ physics: { enabled: false } });
+    saveNodePositions();
+  }, 2500);
 };
 document.getElementById('btn-zoom-in').onclick = () => network && network.moveTo({ scale: network.getScale() * 1.3, animation: true });
 document.getElementById('btn-zoom-out').onclick = () => network && network.moveTo({ scale: network.getScale() * 0.77, animation: true });
 document.getElementById('inspector-close').onclick = () => { hideInspector(); network && network.unselectAll(); };
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+let _importPayload = null;
+
+document.getElementById('btn-export').onclick = async () => {
+  const btn = document.getElementById('btn-export');
+  btn.disabled = true;
+  btn.textContent = '导出中…';
+  try {
+    const data = await api('GET', '/export');
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const ts   = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
+    a.href = url; a.download = `neo4j_export_${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`✅ 导出成功：${data.graph.nodes.length} 节点, ${data.graph.edges.length} 关系`);
+  } catch (e) {
+    toast(`❌ 导出失败：${e.message}`, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇ 导出';
+  }
+};
+
+document.getElementById('btn-import').onclick = () => {
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-file-input').click();
+};
+
+document.getElementById('import-file-input').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.version || !data.graph) throw new Error('文件格式不正确');
+    _importPayload = data;
+    const schemaCount =
+      (data.schemas?.property_schemas?.length || 0) +
+      (data.schemas?.class_schemas?.length || 0) +
+      (data.schemas?.relation_schemas?.length || 0);
+    document.getElementById('import-filename').textContent = file.name;
+    document.getElementById('import-stat-nodes').textContent   = data.graph.nodes?.length || 0;
+    document.getElementById('import-stat-edges').textContent   = data.graph.edges?.length || 0;
+    document.getElementById('import-stat-schemas').textContent = schemaCount;
+    document.getElementById('import-modal').classList.remove('hidden');
+  } catch (err) {
+    toast(`❌ 文件解析失败：${err.message}`, 'err');
+  }
+};
+
+async function confirmImport() {
+  if (!_importPayload) return;
+  const btn = document.getElementById('import-confirm-btn');
+  btn.disabled = true; btn.textContent = '导入中…';
+  try {
+    const result = await api('POST', '/import', _importPayload);
+    closeModal('import-modal');
+    _importPayload = null;
+    _allPositions = {};
+    toast(`✅ 导入完成：${result.imported_nodes} 节点, ${result.imported_edges} 关系`);
+    await loadGraph();
+  } catch (e) {
+    toast(`❌ 导入失败：${e.message}`, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '确认导入';
+  }
+}
 
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });

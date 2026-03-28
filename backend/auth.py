@@ -1,9 +1,11 @@
 import sqlite3
+import json
 import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Body, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -15,7 +17,9 @@ TOKEN_EXPIRE_HOURS = 24 * 7  # 1 week
 
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 security = HTTPBearer()
-DB_PATH = Path(__file__).parent / "users.db"
+_data_dir = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
+_data_dir.mkdir(parents=True, exist_ok=True)
+DB_PATH = _data_dir / "users.db"
 
 
 # ── DB init ────────────────────────────────────────────────────────────────────
@@ -31,6 +35,13 @@ def init_db():
                 role       TEXT NOT NULL DEFAULT 'user',
                 is_active  INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_positions (
+                user_id    INTEGER PRIMARY KEY,
+                positions  TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -138,3 +149,38 @@ def login(data: LoginReq):
 @router.get("/me")
 def get_me(user: dict = Depends(get_current_user)):
     return user
+
+
+# ── Node positions ─────────────────────────────────────────────────────────────
+
+@router.get("/positions")
+def get_positions(user: dict = Depends(get_current_user)):
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT positions FROM user_positions WHERE user_id = ?",
+            (int(user["sub"]),),
+        ).fetchone()
+    if not row:
+        return {}
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return {}
+
+
+@router.put("/positions")
+def save_positions(
+    positions: Dict[str, Any] = Body(...),
+    user: dict = Depends(get_current_user),
+):
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """INSERT INTO user_positions (user_id, positions, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 positions  = excluded.positions,
+                 updated_at = excluded.updated_at""",
+            (int(user["sub"]), json.dumps(positions), now),
+        )
+        conn.commit()
+    return {"ok": True}
