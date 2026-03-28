@@ -3032,27 +3032,37 @@ async function addNodeToWorkspace(nodeId) {
   if (!currentWorkspace) return;
   try {
     await api('POST', `/workspaces/${currentWorkspace.id}/nodes`, { node_ids: [nodeId] });
-    workspaceNodeIds.add(nodeId);
-    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
-    if (ws) ws.node_count = (ws.node_count || 0) + 1;
-    _renderWorkspaceSelect();
-    // Add to canvas
-    const nodeData = await api('GET', `/nodes/${nodeId}`);
-    if (!visNodes.get(nodeId)) visNodes.add(makeVisNode(nodeData));
-    // Add edges connecting this node to other workspace nodes
-    const nbData = await api('GET', `/node-neighbors/${nodeId}`);
-    nbData.edges.forEach(e => {
-      if (!visEdges.get(e.id) && workspaceNodeIds.has(e.source) && workspaceNodeIds.has(e.target)) {
-        visEdges.add(makeVisEdge(e));
+
+    // Re-fetch workspace graph from server — it correctly computes all edges
+    // between workspace nodes via Cypher, which is what works after a page refresh.
+    const data = await api('GET', `/workspaces/${currentWorkspace.id}/graph`);
+    workspaceNodeIds = new Set(data.nodes.map(n => n.id));
+
+    // Incrementally sync canvas: add new nodes/edges without clearing existing ones
+    data.nodes.forEach(n => {
+      if (!visNodes.get(n.id)) {
+        const lk = lockedEntities.get(n.id);
+        visNodes.add(lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n));
       }
     });
+    data.edges.forEach(e => {
+      if (!visEdges.get(e.id)) visEdges.add(makeVisEdge(e));
+    });
+
+    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+    if (ws) ws.node_count = data.nodes.length;
+    _renderWorkspaceSelect();
+
     network.setOptions({ physics: { enabled: true } });
     setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 2000);
     updateStats(); updateEmptyState();
     toast('✅ 已加入工作空间');
-    // Refresh inspector buttons
+
+    // Refresh inspector props tab buttons (加入→移出)
     const vn = visNodes.get(nodeId);
     if (vn && selectedNodeIds.includes(nodeId)) _renderNodePropsTab(vn._data);
+    // Refresh neighbor panel status (已在空间 badges)
+    if (_inspectorTab === 'neighbors' && _inspectorNodeId) loadNeighborPanel(_inspectorNodeId);
   } catch {}
 }
 
