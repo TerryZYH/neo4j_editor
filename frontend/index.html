@@ -158,6 +158,7 @@
       flex: 1;
       display: flex;
       overflow: hidden;
+      position: relative;
     }
 
     /* ── Left sidebar ── */
@@ -202,6 +203,37 @@
       background: var(--surface2);
       border-radius: 10px;
       padding: 1px 6px;
+    }
+
+    /* ── Rel type filter ── */
+    .rel-filter-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .1s;
+      user-select: none;
+    }
+    .rel-filter-item:hover { background: var(--surface2); }
+    .rel-filter-check {
+      width: 14px; height: 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 3px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+      transition: background .1s, border-color .1s;
+    }
+    .rel-filter-item.checked .rel-filter-check {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+    }
+    .rel-filter-active-badge {
+      font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600;
+      background: #f39c1222; color: #f39c12; border: 1px solid #f39c1244;
     }
 
     .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -262,16 +294,22 @@
 
     /* ── Right panel ── */
     .inspector {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
       width: 280px;
       background: var(--surface);
       border-left: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      flex-shrink: 0;
-      transition: width .2s;
       overflow: hidden;
+      transform: translateX(0);
+      transition: transform .2s ease;
+      will-change: transform;
+      z-index: 10;
     }
-    .inspector.hidden { width: 0; }
+    .inspector.hidden { transform: translateX(100%); }
     .inspector-header {
       padding: 12px 16px;
       border-bottom: 1px solid var(--border);
@@ -669,44 +707,6 @@
     }
     .ws-controls { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
 
-    /* ── Inspector tabs ── */
-    .inspector-tabs {
-      display: flex; border-bottom: 1px solid var(--border);
-      padding: 0 16px; gap: 4px; flex-shrink: 0;
-    }
-    .inspector-tab {
-      padding: 7px 12px; font-size: 12px; font-weight: 500; cursor: pointer;
-      color: var(--text-muted); border-bottom: 2px solid transparent;
-      margin-bottom: -1px; transition: color .15s, border-color .15s;
-      white-space: nowrap;
-    }
-    .inspector-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .inspector-tab:hover:not(.active) { color: var(--text); }
-
-    /* ── Neighbor list ── */
-    .neighbor-list { display: flex; flex-direction: column; gap: 6px; }
-    .neighbor-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 10px; border-radius: 6px; background: var(--surface2);
-      border: 1px solid var(--border);
-    }
-    .neighbor-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .neighbor-info { flex: 1; min-width: 0; }
-    .neighbor-name {
-      font-size: 12px; font-weight: 500;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .neighbor-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-    .neighbor-add-btn {
-      background: none; border: 1px solid var(--accent); color: var(--accent);
-      border-radius: 5px; padding: 3px 8px; font-size: 11px; cursor: pointer;
-      white-space: nowrap; flex-shrink: 0; transition: background .1s;
-    }
-    .neighbor-add-btn:hover { background: var(--accent); color: #000; }
-    .neighbor-add-btn.in-ws {
-      border-color: var(--success); color: var(--success); cursor: default;
-    }
-    .neighbor-add-btn.in-ws:hover { background: none; color: var(--success); }
   </style>
 </head>
 <body>
@@ -766,7 +766,6 @@
   </div>
 
   <div class="header-btns">
-    <button class="btn" id="btn-load">🔄 加载图谱</button>
     <button class="btn primary" id="btn-add-node">＋ 新建节点</button>
     <button class="btn" id="btn-add-edge" title="选中两个节点后创建关系">🔗 新建关系</button>
     <button class="btn danger" id="btn-delete" title="删除选中元素">🗑 删除</button>
@@ -846,17 +845,31 @@
     </div>
 
     <div class="sidebar-section" style="flex:1;overflow-y:auto;">
-      <div class="sidebar-title">节点标签</div>
+      <div class="sidebar-title" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        节点标签
+        <span id="label-filter-badge" class="rel-filter-active-badge" style="display:none">筛选中</span>
+        <button id="label-filter-clear-btn" onclick="clearLabelFilter()"
+          style="display:none;margin-left:auto;padding:2px 7px;font-size:11px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer">✕ 清除</button>
+      </div>
       <div id="label-list" class="label-list">
-        <div style="color:var(--text-muted);font-size:12px;">加载中…</div>
+        <div style="color:var(--text-muted);font-size:12px;">暂无标签</div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);margin:12px 0 8px;"></div>
+      <div class="sidebar-title" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        关系类型筛选
+        <span id="rel-filter-badge" class="rel-filter-active-badge" style="display:none">筛选中</span>
+        <button id="rel-filter-clear-btn" onclick="clearRelFilter()"
+          style="display:none;margin-left:auto;padding:2px 7px;font-size:11px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer">✕ 清除</button>
+      </div>
+      <div id="rel-type-list" class="label-list">
+        <div style="color:var(--text-muted);font-size:12px;">暂无关系</div>
       </div>
     </div>
 
     <div class="sidebar-actions">
       <button class="btn" id="btn-fit">⬜ 适应屏幕</button>
       <button class="btn" id="btn-layout">⊞ 重排布局</button>
-      <button class="btn" id="btn-expand" title="展开选中节点的邻居">↗ 展开邻居</button>
-      <button class="btn" id="btn-schemas">📋 属性模板</button>
     </div>
   </aside>
 
@@ -866,7 +879,7 @@
 
     <div id="empty-state" class="empty-state">
       <div class="empty-icon">🕸️</div>
-      <div class="empty-text">图谱为空，点击「加载图谱」或「新建节点」开始</div>
+      <div class="empty-text">图谱为空，点击「新建节点」开始</div>
     </div>
 
     <div class="canvas-hint" id="canvas-hint">单击选中 · 双击编辑 · 拖拽移动</div>
@@ -884,13 +897,7 @@
       <div class="inspector-title" id="inspector-title">属性</div>
       <button class="inspector-close" id="inspector-close">×</button>
     </div>
-    <!-- Tabs: only shown in workspace mode when a node is selected -->
-    <div class="inspector-tabs" id="inspector-tabs" style="display:none">
-      <div class="inspector-tab active" id="itab-props"      onclick="setInspectorTab('props')">属性</div>
-      <div class="inspector-tab"        id="itab-neighbors"  onclick="setInspectorTab('neighbors')">邻居节点</div>
-    </div>
     <div class="inspector-body" id="inspector-body"></div>
-    <div id="inspector-neighbors-body" style="display:none;flex:1;overflow-y:auto;padding:12px 16px"></div>
     <div class="inspector-footer" id="inspector-footer"></div>
   </aside>
 </div>
@@ -989,80 +996,6 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('linked-node-modal')">取消</button>
       <button class="btn primary" id="ln-save">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Schema list modal ────────────────────────────────── -->
-<div class="modal-overlay hidden" id="schema-list-modal">
-  <div class="modal" style="width:680px;max-height:85vh">
-    <div class="modal-header">
-      <div class="modal-title">📋 属性模板管理</div>
-      <button class="modal-close" onclick="closeModal('schema-list-modal')">×</button>
-    </div>
-    <div class="modal-body" style="padding:16px 20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div class="schema-filter-tabs">
-          <div class="schema-filter-tab active" onclick="setSchemaFilter('all',this)">全部</div>
-          <div class="schema-filter-tab" onclick="setSchemaFilter('node',this)">节点</div>
-          <div class="schema-filter-tab" onclick="setSchemaFilter('edge',this)">边</div>
-        </div>
-        <button class="btn primary" onclick="openSchemaEditModal(null)">＋ 新建模板</button>
-      </div>
-      <div id="schema-table-wrap"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Schema edit modal ─────────────────────────────────── -->
-<div class="modal-overlay hidden" id="schema-edit-modal">
-  <div class="modal" style="width:480px">
-    <div class="modal-header">
-      <div class="modal-title" id="schema-edit-title">新建属性模板</div>
-      <button class="modal-close" onclick="closeModal('schema-edit-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>适用对象</label>
-        <select id="se-entity-type" onchange="onSchemaEntityTypeChange()">
-          <option value="node">节点 (Node)</option>
-          <option value="edge">边 (Edge)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label id="se-label-label">节点标签 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有标签）</span></label>
-        <input type="text" id="se-entity-label" placeholder="例: Person 或 *" />
-      </div>
-      <div class="form-group" id="se-propkey-group">
-        <label>属性键</label>
-        <input type="text" id="se-prop-key" placeholder="例: status" />
-      </div>
-      <div class="form-group">
-        <label>枚举值</label>
-        <div class="enum-editor" id="se-enum-chips"></div>
-        <div class="enum-add-row">
-          <input type="text" id="se-enum-input" placeholder="输入一个值后按回车添加" />
-          <button class="btn" onclick="addEnumValue()">添加</button>
-        </div>
-      </div>
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="se-required" style="width:auto" />
-          必填（新建时自动预填该属性）
-        </label>
-      </div>
-      <div class="form-group">
-        <label>默认值 <span style="color:var(--text-muted);font-weight:400">（可选）</span></label>
-        <input type="text" id="se-default-val" placeholder="留空则无默认值" />
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>备注说明 <span style="color:var(--text-muted);font-weight:400">（可选）</span></label>
-        <input type="text" id="se-description" placeholder="这个属性用来表示…" />
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeModal('schema-edit-modal')">取消</button>
-      <button class="btn primary" id="se-save-btn" onclick="saveSchema()">保存</button>
     </div>
   </div>
 </div>
@@ -1184,8 +1117,9 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const API     = 'http://localhost:8000/api';
-const WS_URL  = 'ws://localhost:8000/ws';
+const API              = 'http://localhost:8000/api';
+const WS_URL           = 'ws://localhost:8000/ws';
+const PHYSICS_SETTLE_MS = 3000;
 
 // ── Ontology cache ────────────────────────────────────────────────────────────
 let ontology = { classes: [], relations: [], validation_mode: 'warn' };
@@ -1246,9 +1180,6 @@ function checkOntologyTriple(srcLabels, relType, tgtLabels) {
 
 // ── Schema cache ──────────────────────────────────────────────────────────────
 let schemasCache = [];   // full list, refreshed on open
-let _schemaFilter = 'all';
-let _schemaEditingId = null;   // null = create, number = edit
-let _seEnumValues = [];        // current enum list in edit modal
 
 // ── Auth state ────────────────────────────────────────────────────────────────
 let authToken   = localStorage.getItem('auth_token');
@@ -1257,6 +1188,7 @@ let currentUser = null;  // { sub, username, role }
 // ── WebSocket state ───────────────────────────────────────────────────────────
 let ws              = null;
 let wsReconnectTimer = null;
+let wsEverConnected  = false;
 const onlineUsers   = new Map();   // user_id -> { username, color }
 const lockedEntities = new Map();  // entity_id -> { user_id, username, color }
 const lockCallbacks  = new Map();  // entity_id -> resolve fn (Promise)
@@ -1286,8 +1218,8 @@ function getLabelColor(label) {
 let currentWorkspace  = null;   // { id, name } | null = global mode
 let workspaceNodeIds  = new Set();  // element IDs whitelisted in current workspace
 let _workspaces       = [];     // cached list from server
-let _inspectorTab     = 'props'; // 'props' | 'neighbors'
 let _inspectorNodeId  = null;   // node currently shown in inspector
+
 
 // ── Graph state ───────────────────────────────────────────────────────────────
 let network = null;
@@ -1354,11 +1286,9 @@ function onLoginSuccess(data) {
   initUserUI();
   connectWS();
   initNetwork();
-  checkStatus();
   refreshLabels();
   loadOntology();
   loadWorkspaces().then(() => loadCurrentView());
-  setInterval(checkStatus, 30000);
 }
 
 function doLogout() {
@@ -1448,12 +1378,19 @@ function connectWS() {
     ws = new WebSocket(`${WS_URL}?token=${authToken}`);
     ws.onopen = () => {
       console.log('WS connected');
+      setConnectionStatus(true);
+      if (wsEverConnected) {
+        // 断线重连后自动刷新图谱，补齐断线期间的变更
+        loadCurrentView();
+      }
+      wsEverConnected = true;
     };
     ws.onmessage = (e) => {
       try { handleWSMessage(JSON.parse(e.data)); } catch {}
     };
     ws.onclose = (e) => {
       if (e.code === 4001) { doLogout(); return; }
+      setConnectionStatus(false);
       // Reconnect after 3s
       wsReconnectTimer = setTimeout(connectWS, 3000);
     };
@@ -1770,72 +1707,51 @@ async function loadCurrentView() {
   }
 }
 
+async function _applyGraphData(data, toastMsg) {
+  _activeRelFilter.clear();
+  _activeLabelFilter.clear();
+  visNodes.clear();
+  visEdges.clear();
+
+  const savedPositions = await loadNodePositions();
+  let hasNewNodes = false;
+
+  if (data.nodes.length) visNodes.add(data.nodes.map(n => {
+    const lk = lockedEntities.get(n.id);
+    const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
+    const pos = savedPositions[n.id];
+    if (pos) { visNode.x = pos.x; visNode.y = pos.y; visNode.physics = false; }
+    else { hasNewNodes = true; }
+    return visNode;
+  }));
+  if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
+
+  if (hasNewNodes) {
+    network.setOptions({ physics: { enabled: true } });
+    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, PHYSICS_SETTLE_MS);
+  } else {
+    network.setOptions({ physics: { enabled: false } });
+  }
+
+  updateStats(); updateEmptyState();
+  toast(toastMsg);
+  refreshLabels();
+  renderRelTypeList();
+}
+
 async function loadGraph(labelFilter = '') {
   const url = labelFilter
     ? `/graph?label=${encodeURIComponent(labelFilter)}&limit=300`
     : '/graph?limit=300';
   const data = await api('GET', url);
-
-  visNodes.clear();
-  visEdges.clear();
-
-  const savedPositions = await loadNodePositions();
-  let hasNewNodes = false;
-
-  if (data.nodes.length) visNodes.add(data.nodes.map(n => {
-    const lk = lockedEntities.get(n.id);
-    const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
-    const pos = savedPositions[n.id];
-    if (pos) { visNode.x = pos.x; visNode.y = pos.y; visNode.physics = false; }
-    else { hasNewNodes = true; }
-    return visNode;
-  }));
-  if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
-
-  if (hasNewNodes) {
-    network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 3000);
-  } else {
-    network.setOptions({ physics: { enabled: false } });
-  }
-
-  updateStats(); updateEmptyState();
-  toast(`✅ 已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
-  refreshLabels();
+  await _applyGraphData(data, `✅ 已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
 }
 
 async function loadWorkspaceGraph(workspaceId) {
   const data = await api('GET', `/workspaces/${workspaceId}/graph`);
-
-  // Rebuild whitelist
   workspaceNodeIds = new Set(data.nodes.map(n => n.id));
-
-  visNodes.clear();
-  visEdges.clear();
-
-  const savedPositions = await loadNodePositions();
-  let hasNewNodes = false;
-
-  if (data.nodes.length) visNodes.add(data.nodes.map(n => {
-    const lk = lockedEntities.get(n.id);
-    const visNode = lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n);
-    const pos = savedPositions[n.id];
-    if (pos) { visNode.x = pos.x; visNode.y = pos.y; visNode.physics = false; }
-    else { hasNewNodes = true; }
-    return visNode;
-  }));
-  if (data.edges.length) visEdges.add(data.edges.map(makeVisEdge));
-
-  if (hasNewNodes) {
-    network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 3000);
-  } else {
-    network.setOptions({ physics: { enabled: false } });
-  }
-
-  updateStats(); updateEmptyState();
   const name = currentWorkspace ? currentWorkspace.name : '';
-  toast(`✅ 工作空间「${name}」已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
+  await _applyGraphData(data, `✅ 工作空间「${name}」已加载 ${data.nodes.length} 节点, ${data.edges.length} 关系`);
 }
 
 // ── Position persistence (server-side per user) ───────────────────────────────
@@ -1885,31 +1801,147 @@ function updateEmptyState() {
   document.getElementById('empty-state').classList.toggle('hidden', visNodes.length > 0);
 }
 
-async function refreshLabels() {
-  try {
-    const labels = await api('GET', '/labels');
-    const list = document.getElementById('label-list');
-    list.innerHTML = '';
-    labels.forEach(lbl => {
-      const color = getLabelColor(lbl);
+// ── Relationship type filter ───────────────────────────────────────────────────
+let _activeRelFilter = new Set(); // empty = no filter active
+
+function _renderFilterList({ listId, items, activeSet, onToggle, badgeId, clearBtnId, emptyText }) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  list.innerHTML = '';
+  if (!items.length) {
+    list.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">${emptyText}</div>`;
+  } else {
+    items.forEach(({ name, count, extra = '' }) => {
+      const isChecked = activeSet.has(name);
       const item = document.createElement('div');
-      item.className = 'label-item';
-      item.innerHTML = `<div class="label-dot" style="background:${color}"></div><span class="label-name">${lbl}</span>`;
-      item.onclick = () => {
-        if (currentWorkspace) {
-          // In workspace mode: open filter modal pre-filled with this label
-          openFilterModal();
-          document.getElementById('ws-filter-type').value = 'label';
-          onFilterTypeChange();
-          document.getElementById('ws-filter-label').value = lbl;
-        } else {
-          loadGraph(lbl);
-        }
-      };
+      item.className = 'rel-filter-item' + (isChecked ? ' checked' : '');
+      item.innerHTML =
+        `<div class="rel-filter-check">${isChecked ? '✓' : ''}</div>` +
+        extra +
+        `<span class="label-name">${name}</span>` +
+        `<span class="label-count">${count}</span>`;
+      item.onclick = () => onToggle(name);
       list.appendChild(item);
     });
-    if (!labels.length) list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">暂无标签</div>';
-  } catch {}
+  }
+  const active = activeSet.size > 0;
+  const badge = document.getElementById(badgeId);
+  const clearBtn = document.getElementById(clearBtnId);
+  if (badge) badge.style.display = active ? 'inline-block' : 'none';
+  if (clearBtn) clearBtn.style.display = active ? 'inline-block' : 'none';
+}
+
+function renderRelTypeList() {
+  const typeCounts = {};
+  visEdges.get().forEach(e => {
+    const t = (e._data && e._data.type) || e.label || '';
+    if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
+  });
+  _renderFilterList({
+    listId: 'rel-type-list',
+    items: Object.keys(typeCounts).sort().map(name => ({ name, count: typeCounts[name] })),
+    activeSet: _activeRelFilter,
+    onToggle: toggleRelFilter,
+    badgeId: 'rel-filter-badge',
+    clearBtnId: 'rel-filter-clear-btn',
+    emptyText: '暂无关系',
+  });
+}
+
+function toggleRelFilter(type) {
+  if (_activeRelFilter.has(type)) {
+    _activeRelFilter.delete(type);
+  } else {
+    _activeRelFilter.add(type);
+  }
+  applyRelFilter();
+  renderRelTypeList();
+}
+
+function clearRelFilter() {
+  _activeRelFilter.clear();
+  applyRelFilter();
+  renderRelTypeList();
+}
+
+function applyRelFilter() {
+  const noLabelFilter = _activeLabelFilter.size === 0;
+  const noRelFilter = _activeRelFilter.size === 0;
+
+  if (noLabelFilter && noRelFilter) {
+    const nu = visNodes.get().map(n => ({ id: n.id, hidden: false }));
+    const eu = visEdges.get().map(e => ({ id: e.id, hidden: false }));
+    if (nu.length) visNodes.update(nu);
+    if (eu.length) visEdges.update(eu);
+    return;
+  }
+
+  // Step 1: nodes passing label filter
+  const labelOkNodes = new Set();
+  visNodes.get().forEach(n => {
+    if (noLabelFilter) { labelOkNodes.add(n.id); return; }
+    const labels = (n._data && n._data.labels) || [];
+    if (labels.some(l => _activeLabelFilter.has(l))) labelOkNodes.add(n.id);
+  });
+
+  // Step 2: edges passing rel filter whose both endpoints pass label filter
+  const relVisibleNodes = new Set();
+  const eu = visEdges.get().map(e => {
+    const type = (e._data && e._data.type) || e.label || '';
+    const relOk = noRelFilter || _activeRelFilter.has(type);
+    const endOk = labelOkNodes.has(e.from) && labelOkNodes.has(e.to);
+    const visible = relOk && endOk;
+    if (visible) { relVisibleNodes.add(e.from); relVisibleNodes.add(e.to); }
+    return { id: e.id, hidden: !visible };
+  });
+
+  // Step 3: node visible = passes label AND (no rel filter OR has a visible edge)
+  const nu = visNodes.get().map(n => ({
+    id: n.id,
+    hidden: !(labelOkNodes.has(n.id) && (noRelFilter || relVisibleNodes.has(n.id)))
+  }));
+
+  visEdges.update(eu);
+  visNodes.update(nu);
+}
+
+function refreshLabels() {
+  const labelCounts = {};
+  visNodes.get().forEach(n => {
+    ((n._data && n._data.labels) || []).forEach(l => {
+      labelCounts[l] = (labelCounts[l] || 0) + 1;
+    });
+  });
+  _renderFilterList({
+    listId: 'label-list',
+    items: Object.keys(labelCounts).sort().map(name => ({
+      name, count: labelCounts[name],
+      extra: `<div class="label-dot" style="background:${getLabelColor(name)};flex-shrink:0"></div>`,
+    })),
+    activeSet: _activeLabelFilter,
+    onToggle: toggleLabelFilter,
+    badgeId: 'label-filter-badge',
+    clearBtnId: 'label-filter-clear-btn',
+    emptyText: '暂无标签',
+  });
+}
+
+let _activeLabelFilter = new Set();
+
+function toggleLabelFilter(lbl) {
+  if (_activeLabelFilter.has(lbl)) {
+    _activeLabelFilter.delete(lbl);
+  } else {
+    _activeLabelFilter.add(lbl);
+  }
+  applyRelFilter();
+  refreshLabels();
+}
+
+function clearLabelFilter() {
+  _activeLabelFilter.clear();
+  applyRelFilter();
+  refreshLabels();
 }
 
 // ── Selection ─────────────────────────────────────────────────────────────────
@@ -1942,18 +1974,9 @@ function onDeselect() {
 // ── Inspector ─────────────────────────────────────────────────────────────────
 function showNodeInspector(n) {
   _inspectorNodeId = n.id;
-  _inspectorTab = 'props';
 
   document.getElementById('inspector-icon').textContent = '📦';
   document.getElementById('inspector-title').textContent = nodeLabel(n);
-
-  // Show tabs only in workspace mode
-  const tabsEl = document.getElementById('inspector-tabs');
-  tabsEl.style.display = currentWorkspace ? 'flex' : 'none';
-  document.getElementById('itab-props').classList.add('active');
-  document.getElementById('itab-neighbors').classList.remove('active');
-  document.getElementById('inspector-neighbors-body').style.display = 'none';
-  document.getElementById('inspector-body').style.display = '';
 
   _renderNodePropsTab(n);
   document.getElementById('inspector').classList.remove('hidden');
@@ -1969,9 +1992,12 @@ function _renderNodePropsTab(n) {
     `<span class="tag" style="background:${getLabelColor(l)}22;color:${getLabelColor(l)};border:1px solid ${getLabelColor(l)}44">${l}</span>`
   ).join('');
 
-  const propsHtml = Object.entries(n.properties || {}).map(([k, v]) => `
-    <div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${v}</div></div>
-  `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
+  const propsHtml = Object.entries(n.properties || {}).map(([k, v]) => {
+    const valHtml = Array.isArray(v)
+      ? (v.length ? v.map(item => `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;margin:2px 3px 0 0;font-size:12px">${item}</span>`).join('') : '<span style="color:var(--text-muted);font-size:12px;">（空列表）</span>')
+      : v;
+    return `<div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${valHtml}</div></div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
 
   body.innerHTML = `
     ${lk ? `<div id="inspector-lock-notice" class="lock-notice">🔒 正在被「${lk.username}」编辑，暂不可修改</div>` : ''}
@@ -2003,9 +2029,12 @@ function showEdgeInspector(e) {
   const footer = document.getElementById('inspector-footer');
   const lk = lockedEntities.get(e.id);
 
-  const propsHtml = Object.entries(e.properties || {}).map(([k, v]) => `
-    <div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${v}</div></div>
-  `).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
+  const propsHtml = Object.entries(e.properties || {}).map(([k, v]) => {
+    const valHtml = Array.isArray(v)
+      ? (v.length ? v.map(item => `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;margin:2px 3px 0 0;font-size:12px">${item}</span>`).join('') : '<span style="color:var(--text-muted);font-size:12px;">（空列表）</span>')
+      : v;
+    return `<div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${valHtml}</div></div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:12px;">无属性</div>';
 
   body.innerHTML = `
     ${lk ? `<div id="inspector-lock-notice" class="lock-notice">🔒 正在被「${lk.username}」编辑，暂不可修改</div>` : ''}
@@ -2064,7 +2093,15 @@ function addPropRow(editorId, key = '', val = '', schema = null) {
 
   const isRequired = schema && schema.required;
   const hasEnum    = schema && schema.enum_values && schema.enum_values.length > 0;
+  const isList     = schema && schema.prop_type === 'list';
   const tip        = schema && schema.description ? ` title="${schema.description}"` : '';
+
+  if (isList) row.dataset.propType = 'list';
+
+  // Normalize display value for list type
+  const displayVal = isList
+    ? (Array.isArray(val) ? val.join(', ') : String(val === '' ? '' : val))
+    : String(val);
 
   let valHtml;
   if (hasEnum) {
@@ -2072,8 +2109,10 @@ function addPropRow(editorId, key = '', val = '', schema = null) {
       `<option value="${v}" ${String(v) === String(val) ? 'selected' : ''}>${v}</option>`
     ).join('');
     valHtml = `<select class="prop-val-input">${opts}</select>`;
+  } else if (isList) {
+    valHtml = `<input type="text" placeholder="用逗号分隔，如: 手机, 移动电话" value="${displayVal}" class="prop-val-input" style="font-style:italic" />`;
   } else {
-    valHtml = `<input type="text" placeholder="值" value="${val}" class="prop-val-input" />`;
+    valHtml = `<input type="text" placeholder="值" value="${displayVal}" class="prop-val-input" />`;
   }
 
   const keyStyle = isRequired ? 'font-weight:600;color:var(--accent)' : '';
@@ -2096,7 +2135,13 @@ function collectProps(editorId) {
     const k = row.querySelector('.prop-key-input').value.trim();
     const valEl = row.querySelector('.prop-val-input');
     const v = valEl ? valEl.value.trim() : '';
-    if (k) props[k] = v;
+    if (k) {
+      if (row.dataset.propType === 'list') {
+        props[k] = v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+      } else {
+        props[k] = v;
+      }
+    }
   });
   return props;
 }
@@ -2203,7 +2248,7 @@ async function deleteNode(nodeId) {
     visNodes.remove(nodeId);
     hideInspector(); updateStats(); updateEmptyState();
     toast('✅ 节点已删除');
-    refreshLabels();
+    refreshLabels(); renderRelTypeList();
   } catch {}
 }
 
@@ -2220,7 +2265,7 @@ async function deleteSelected() {
     visNodes.remove(selectedNodeIds);
     hideInspector(); updateStats(); updateEmptyState();
     toast(`✅ 已删除 ${selectedNodeIds.length} 个节点`);
-    refreshLabels();
+    refreshLabels(); renderRelTypeList();
   } catch {}
 }
 
@@ -2373,7 +2418,15 @@ async function saveLinkedNode() {
   const edgeProps = collectProps('ln-edge-props-editor');
   try {
     const newNode = await api('POST', '/nodes', { labels, properties: nodeProps });
-    visNodes.add(makeVisNode(newNode));
+    const srcPos = network ? network.getPosition(_lnSourceId) : null;
+    const newVisNode = makeVisNode(newNode);
+    if (srcPos) {
+      const angle = Math.random() * 2 * Math.PI;
+      const dist = 150 + Math.random() * 50;
+      newVisNode.x = srcPos.x + Math.cos(angle) * dist;
+      newVisNode.y = srcPos.y + Math.sin(angle) * dist;
+    }
+    visNodes.add(newVisNode);
 
     const sourceEid = direction === 'out' ? _lnSourceId : newNode.id;
     const targetEid = direction === 'out' ? newNode.id : _lnSourceId;
@@ -2413,6 +2466,7 @@ async function saveNewEdge(sourceId, targetId, srcLabels = [], tgtLabels = []) {
     const final = Object.keys(properties).length ? { ...e, properties } : e;
     visEdges.add(makeVisEdge(final));
     updateStats();
+    renderRelTypeList();
     closeModal('edge-modal');
     toast('✅ 关系已创建');
   } catch {}
@@ -2461,6 +2515,7 @@ async function deleteEdge(edgeId) {
     await api('DELETE', `/relationships/${edgeId}`);
     visEdges.remove(edgeId);
     hideInspector(); updateStats();
+    renderRelTypeList();
     toast('✅ 关系已删除');
   } catch {}
 }
@@ -2533,45 +2588,11 @@ async function focusNode(nodeId) {
   }
 }
 
-// ── Expand neighbors ──────────────────────────────────────────────────────────
-document.getElementById('btn-expand').onclick = async () => {
-  if (!selectedNodeIds.length) { toast('⚠️ 请先选中一个节点', 'err'); return; }
-  if (currentWorkspace) {
-    // In workspace mode: open neighbor tab in inspector instead
-    if (selectedNodeIds.length === 1) {
-      setInspectorTab('neighbors');
-    } else {
-      toast('⚠️ 工作空间模式下请单选一个节点查看邻居', 'err');
-    }
-    return;
-  }
-  try {
-    for (const nodeId of selectedNodeIds) {
-      const data = await api('GET', `/node-neighbors/${nodeId}`);
-      const newNodes = data.nodes.filter(n => !visNodes.get(n.id));
-      const newEdges = data.edges.filter(e => !visEdges.get(e.id));
-      if (newNodes.length) visNodes.add(newNodes.map(makeVisNode));
-      if (newEdges.length) visEdges.add(newEdges.map(makeVisEdge));
-    }
-    network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => network.setOptions({ physics: { enabled: false } }), 2000);
-    updateStats(); updateEmptyState();
-    toast('✅ 邻居节点已展开');
-  } catch {}
-};
 
-// ── Status check ──────────────────────────────────────────────────────────────
-async function checkStatus() {
-  try {
-    const s = await fetch(API + '/status').then(r => r.json());
-    const dot = document.getElementById('status-dot');
-    const txt = document.getElementById('status-text');
-    if (s.connected) { dot.className = 'status-dot ok'; txt.textContent = '已连接'; }
-    else             { dot.className = 'status-dot err'; txt.textContent = '未连接'; }
-  } catch {
-    document.getElementById('status-dot').className = 'status-dot err';
-    document.getElementById('status-text').textContent = '服务不可用';
-  }
+// ── Status indicator ──────────────────────────────────────────────────────────
+function setConnectionStatus(connected) {
+  document.getElementById('status-dot').className = 'status-dot ' + (connected ? 'ok' : 'err');
+  document.getElementById('status-text').textContent = connected ? '已连接' : '已断线';
 }
 
 // ── Schema management ─────────────────────────────────────────────────────────
@@ -2591,202 +2612,6 @@ function getSchemasFor(entityType, entityLabel) {
   return schemasCache.filter(s =>
     s.entity_type === entityType && (s.entity_label === entityLabel || s.entity_label === '*')
   );
-}
-
-// Open schema list modal
-async function openSchemasModal() {
-  _schemaFilter = 'all';
-  document.querySelectorAll('.schema-filter-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
-  await loadSchemasCache();
-  renderSchemaTable();
-  document.getElementById('schema-list-modal').classList.remove('hidden');
-}
-
-function setSchemaFilter(filter, el) {
-  _schemaFilter = filter;
-  document.querySelectorAll('.schema-filter-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  renderSchemaTable();
-}
-
-function renderSchemaTable() {
-  const wrap = document.getElementById('schema-table-wrap');
-  const filtered = _schemaFilter === 'all' ? schemasCache
-    : schemasCache.filter(s => s.entity_type === _schemaFilter);
-
-  if (!filtered.length) {
-    wrap.innerHTML = '<div class="schema-empty">暂无属性模板，点击「新建模板」添加</div>';
-    return;
-  }
-
-  const rows = filtered.map(s => {
-    const chips = s.enum_values.length
-      ? s.enum_values.map(v => `<span class="enum-chip">${v}</span>`).join('')
-      : '<span style="color:var(--text-muted);font-size:12px">—</span>';
-    const entityBadge = s.entity_type === 'node'
-      ? `<span style="color:#4CDA7A;font-size:11px">节点</span>`
-      : `<span style="color:#58a6ff;font-size:11px">边</span>`;
-    const propKeyDisplay = s.prop_key === '__rel_type__'
-      ? `<span style="color:var(--warning)">[关系类型]</span>`
-      : s.prop_key;
-    const reqBadge = s.required
-      ? `<span style="color:var(--danger);font-size:11px">必填</span>` : '—';
-    return `<tr>
-      <td>${entityBadge} <b>${s.entity_label}</b></td>
-      <td>${propKeyDisplay}</td>
-      <td><div class="enum-chips">${chips}</div></td>
-      <td style="text-align:center">${reqBadge}</td>
-      <td style="white-space:nowrap">
-        <button class="btn" style="padding:3px 8px;font-size:12px" onclick="openSchemaEditModal(${s.id})">编辑</button>
-        <button class="btn danger" style="padding:3px 8px;font-size:12px;margin-left:4px" onclick="confirmDeleteSchema(${s.id},'${s.entity_label}','${s.prop_key}')">删除</button>
-      </td>
-    </tr>`;
-  }).join('');
-
-  wrap.innerHTML = `<table class="schema-table">
-    <thead><tr>
-      <th>标签 / 关系类型</th><th>属性键</th><th>枚举值</th><th>必填</th><th>操作</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
-// Open schema create/edit modal
-function openSchemaEditModal(id) {
-  _schemaEditingId = id;
-  _seEnumValues = [];
-
-  if (id === null) {
-    document.getElementById('schema-edit-title').textContent = '新建属性模板';
-    document.getElementById('se-entity-type').value = 'node';
-    document.getElementById('se-entity-label').value = '';
-    document.getElementById('se-prop-key').value = '';
-    document.getElementById('se-prop-key').readOnly = false;
-    document.getElementById('se-prop-key').style.opacity = '';
-    const hint = document.getElementById('se-prop-key-hint');
-    if (hint) hint.remove();
-    document.getElementById('se-required').checked = false;
-    document.getElementById('se-default-val').value = '';
-    document.getElementById('se-description').value = '';
-    onSchemaEntityTypeChange();
-  } else {
-    const s = schemasCache.find(x => x.id === id);
-    if (!s) return;
-    document.getElementById('schema-edit-title').textContent = '编辑属性模板';
-    document.getElementById('se-entity-type').value = s.entity_type;
-    document.getElementById('se-entity-label').value = s.entity_label;
-    const propKeyEl = document.getElementById('se-prop-key');
-    propKeyEl.value = s.prop_key;
-    propKeyEl.readOnly = true;
-    propKeyEl.style.opacity = '0.6';
-    // Show hint if not already present
-    if (!document.getElementById('se-prop-key-hint')) {
-      const hint = document.createElement('div');
-      hint.id = 'se-prop-key-hint';
-      hint.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:4px';
-      hint.textContent = '属性键不可修改。如需更名，请删除后重建。';
-      propKeyEl.parentElement.appendChild(hint);
-    }
-    document.getElementById('se-required').checked = s.required;
-    document.getElementById('se-default-val').value = s.default_val || '';
-    document.getElementById('se-description').value = s.description || '';
-    _seEnumValues = [...s.enum_values];
-    onSchemaEntityTypeChange();
-  }
-
-  renderEnumChips();
-  document.getElementById('schema-edit-modal').classList.remove('hidden');
-}
-
-function onSchemaEntityTypeChange() {
-  const isEdge = document.getElementById('se-entity-type').value === 'edge';
-  document.getElementById('se-label-label').innerHTML = isEdge
-    ? '关系类型 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有类型）</span>'
-    : '节点标签 <span style="color:var(--text-muted);font-weight:400">（填 * 表示所有标签）</span>';
-  // Show/hide prop key field — for edge __rel_type__ it's a special key
-  const _pkCurrent = document.getElementById('se-prop-key');
-  const _pkVal     = _pkCurrent ? _pkCurrent.value : '';
-  const _pkRO      = _pkCurrent ? _pkCurrent.readOnly : false;
-  const _pkOpacity = _pkCurrent ? _pkCurrent.style.opacity : '';
-  if (isEdge) {
-    document.getElementById('se-propkey-group').innerHTML = `
-      <label>属性键 <span style="color:var(--text-muted);font-weight:400">（填 __rel_type__ 约束关系类型本身）</span></label>
-      <input type="text" id="se-prop-key" placeholder="例: role 或 __rel_type__" value="${_pkVal}" />`;
-  } else {
-    document.getElementById('se-propkey-group').innerHTML = `
-      <label>属性键</label>
-      <input type="text" id="se-prop-key" placeholder="例: status" value="${_pkVal}" />`;
-  }
-  const newPkEl = document.getElementById('se-prop-key');
-  newPkEl.readOnly = _pkRO;
-  newPkEl.style.opacity = _pkOpacity;
-}
-
-function renderEnumChips() {
-  const wrap = document.getElementById('se-enum-chips');
-  wrap.innerHTML = _seEnumValues.map((v, i) => `
-    <div class="enum-tag-edit">
-      <span>${v}</span>
-      <button class="enum-tag-del" onclick="_seEnumValues.splice(${i},1);renderEnumChips()">×</button>
-    </div>
-  `).join('');
-}
-
-function addEnumValue() {
-  const inp = document.getElementById('se-enum-input');
-  const val = inp.value.trim();
-  if (!val) return;
-  if (_seEnumValues.includes(val)) { toast('该值已存在', 'err'); return; }
-  _seEnumValues.push(val);
-  inp.value = '';
-  renderEnumChips();
-  inp.focus();
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.activeElement.id === 'se-enum-input') {
-    e.preventDefault();
-    addEnumValue();
-  }
-});
-
-async function saveSchema() {
-  const entityType  = document.getElementById('se-entity-type').value;
-  const entityLabel = document.getElementById('se-entity-label').value.trim();
-  const propKey     = document.getElementById('se-prop-key').value.trim();
-  const required    = document.getElementById('se-required').checked;
-  const defaultVal  = document.getElementById('se-default-val').value.trim() || null;
-  const description = document.getElementById('se-description').value.trim() || null;
-
-  if (!entityLabel) { toast('请填写标签/关系类型', 'err'); return; }
-  if (!propKey)     { toast('请填写属性键', 'err'); return; }
-  if (_seEnumValues.length === 0) { toast('至少添加一个枚举值', 'err'); return; }
-
-  const body = { entity_type: entityType, entity_label: entityLabel, prop_key: propKey,
-    enum_values: _seEnumValues, required, default_val: defaultVal, description };
-
-  try {
-    if (_schemaEditingId === null) {
-      await api('POST', '/schemas', body);
-      toast('✅ 模板已创建');
-    } else {
-      await api('PUT', `/schemas/${_schemaEditingId}`, { enum_values: _seEnumValues, required, default_val: defaultVal, description });
-      toast('✅ 模板已更新');
-    }
-    closeModal('schema-edit-modal');
-    await loadSchemasCache();
-    renderSchemaTable();
-  } catch {}
-}
-
-async function confirmDeleteSchema(id, label, propKey) {
-  if (!confirm(`确定删除「${label} · ${propKey}」模板吗？`)) return;
-  try {
-    await api('DELETE', `/schemas/${id}`);
-    toast('✅ 已删除');
-    await loadSchemasCache();
-    renderSchemaTable();
-  } catch {}
 }
 
 // ── Schema-aware prop editor ───────────────────────────────────────────────────
@@ -3028,41 +2853,34 @@ async function applyWorkspaceFilter() {
 }
 
 // Add / remove single node from current workspace
+async function _syncWorkspaceGraph(toastMsg) {
+  const data = await api('GET', `/workspaces/${currentWorkspace.id}/graph`);
+  workspaceNodeIds = new Set(data.nodes.map(n => n.id));
+  data.nodes.forEach(n => {
+    if (!visNodes.get(n.id)) {
+      const lk = lockedEntities.get(n.id);
+      visNodes.add(lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n));
+    }
+  });
+  data.edges.forEach(e => { if (!visEdges.get(e.id)) visEdges.add(makeVisEdge(e)); });
+  const ws = _workspaces.find(w => w.id === currentWorkspace.id);
+  if (ws) ws.node_count = data.nodes.length;
+  _renderWorkspaceSelect();
+  network.setOptions({ physics: { enabled: true } });
+  setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, PHYSICS_SETTLE_MS);
+  updateStats(); updateEmptyState();
+  refreshLabels(); renderRelTypeList();
+  toast(toastMsg);
+}
+
 async function addNodeToWorkspace(nodeId) {
   if (!currentWorkspace) return;
   try {
     await api('POST', `/workspaces/${currentWorkspace.id}/nodes`, { node_ids: [nodeId] });
-
-    // Re-fetch workspace graph from server — it correctly computes all edges
-    // between workspace nodes via Cypher, which is what works after a page refresh.
-    const data = await api('GET', `/workspaces/${currentWorkspace.id}/graph`);
-    workspaceNodeIds = new Set(data.nodes.map(n => n.id));
-
-    // Incrementally sync canvas: add new nodes/edges without clearing existing ones
-    data.nodes.forEach(n => {
-      if (!visNodes.get(n.id)) {
-        const lk = lockedEntities.get(n.id);
-        visNodes.add(lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n));
-      }
-    });
-    data.edges.forEach(e => {
-      if (!visEdges.get(e.id)) visEdges.add(makeVisEdge(e));
-    });
-
-    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
-    if (ws) ws.node_count = data.nodes.length;
-    _renderWorkspaceSelect();
-
-    network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 2000);
-    updateStats(); updateEmptyState();
-    toast('✅ 已加入工作空间');
-
+    await _syncWorkspaceGraph('✅ 已加入工作空间');
     // Refresh inspector props tab buttons (加入→移出)
     const vn = visNodes.get(nodeId);
     if (vn && selectedNodeIds.includes(nodeId)) _renderNodePropsTab(vn._data);
-    // Refresh neighbor panel badges without resetting filters
-    if (_inspectorTab === 'neighbors') _renderNeighborList();
   } catch {}
 }
 
@@ -3079,176 +2897,14 @@ async function removeNodeFromWorkspace(nodeId) {
     visEdges.remove(connEdges);
     visNodes.remove(nodeId);
     updateStats(); updateEmptyState();
+    refreshLabels(); renderRelTypeList();
     hideInspector();
     toast('✅ 已从工作空间移除');
   } catch {}
 }
 
-// ── Inspector tabs ─────────────────────────────────────────────────────────────
-
-function setInspectorTab(tab) {
-  _inspectorTab = tab;
-  document.getElementById('itab-props').classList.toggle('active', tab === 'props');
-  document.getElementById('itab-neighbors').classList.toggle('active', tab === 'neighbors');
-  document.getElementById('inspector-body').style.display           = tab === 'props'     ? '' : 'none';
-  document.getElementById('inspector-neighbors-body').style.display = tab === 'neighbors' ? '' : 'none';
-  document.getElementById('inspector-footer').style.display         = tab === 'props'     ? '' : 'none';
-  if (tab === 'neighbors' && _inspectorNodeId) loadNeighborPanel(_inspectorNodeId);
-}
-
-// ── Neighbor panel with filters ────────────────────────────────────────────────
-
-let _nbRawData    = null;  // { neighbors, edgeMap, relTypes, labelTypes }
-let _nbFilterRel  = '';    // rel type filter
-let _nbFilterDir  = '';    // 'out' | 'in' | ''
-let _nbFilterLbl  = '';    // node label filter
-
-async function loadNeighborPanel(nodeId) {
-  const container = document.getElementById('inspector-neighbors-body');
-  container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载中…</div>';
-  _nbRawData = null; _nbFilterRel = ''; _nbFilterDir = ''; _nbFilterLbl = '';
-
-  try {
-    const data = await api('GET', `/node-neighbors/${nodeId}`);
-    const neighbors = data.nodes.filter(n => n.id !== nodeId);
-
-    if (!neighbors.length) {
-      container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">无邻居节点</div>';
-      return;
-    }
-
-    // Build edge map: neighbor_id -> [{type, dir:'out'|'in'}]
-    const edgeMap = {};
-    data.edges.forEach(e => {
-      const other = e.source === nodeId ? e.target : e.source;
-      if (!edgeMap[other]) edgeMap[other] = [];
-      edgeMap[other].push({ type: e.type, dir: e.source === nodeId ? 'out' : 'in' });
-    });
-
-    const relTypes   = [...new Set(data.edges.map(e => e.type))].sort();
-    const labelTypes = [...new Set(neighbors.flatMap(n => n.labels || []))].sort();
-
-    _nbRawData = { neighbors, edgeMap, relTypes, labelTypes };
-
-    // Build filter bar + list area
-    const selStyle = 'background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 5px;font-size:11px;outline:none;min-width:0;';
-    container.innerHTML = `
-      <div style="display:flex;gap:5px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
-        <select id="nb-filter-rel" onchange="_nbFilterRel=this.value;_renderNeighborList()"
-                style="${selStyle}flex:1" title="按关系类型过滤">
-          <option value="">所有关系</option>
-          ${relTypes.map(t => `<option value="${t}">${t}</option>`).join('')}
-        </select>
-        <select id="nb-filter-dir" onchange="_nbFilterDir=this.value;_renderNeighborList()"
-                style="${selStyle}flex-shrink:0" title="按关系方向过滤">
-          <option value="">全方向</option>
-          <option value="out">→ 出向</option>
-          <option value="in">← 入向</option>
-        </select>
-        <select id="nb-filter-lbl" onchange="_nbFilterLbl=this.value;_renderNeighborList()"
-                style="${selStyle}flex:1" title="按节点标签过滤">
-          <option value="">所有标签</option>
-          ${labelTypes.map(l => `<option value="${l}">${l}</option>`).join('')}
-        </select>
-        <button onclick="addAllFilteredNeighbors()"
-                style="background:var(--accent);border:none;color:#000;font-weight:600;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0"
-                title="将过滤结果中所有未加入的节点批量加入工作空间">全部加入</button>
-      </div>
-      <div id="nb-list-wrap" class="neighbor-list"></div>`;
-
-    _renderNeighborList();
-  } catch {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">加载失败</div>';
-  }
-}
-
-function _nbMatchesFilters(n) {
-  const rels  = (_nbRawData.edgeMap[n.id] || []);
-  const lblOk = !_nbFilterLbl || (n.labels || []).includes(_nbFilterLbl);
-  if (!lblOk) return false;
-  if (!_nbFilterRel && !_nbFilterDir) return true;
-  // At least one edge must satisfy BOTH rel-type and direction simultaneously
-  return rels.some(r =>
-    (!_nbFilterRel || r.type === _nbFilterRel) &&
-    (!_nbFilterDir || r.dir  === _nbFilterDir)
-  );
-}
-
-function _renderNeighborList() {
-  if (!_nbRawData) return;
-  const wrap = document.getElementById('nb-list-wrap');
-  if (!wrap) return;
-
-  const filtered = _nbRawData.neighbors.filter(_nbMatchesFilters);
-
-  if (!filtered.length) {
-    wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">无匹配节点</div>';
-    return;
-  }
-
-  wrap.innerHTML = filtered.map(n => {
-    const color = getLabelColor(n.labels[0] || 'Node');
-    const name  = nodeLabel(n);
-    const lbl   = (n.labels || []).join(', ');
-    // Show only rels matching current filters
-    const rels  = (_nbRawData.edgeMap[n.id] || [])
-      .filter(r => (!_nbFilterRel || r.type === _nbFilterRel) && (!_nbFilterDir || r.dir === _nbFilterDir))
-      .map(r => `${r.dir === 'out' ? '→' : '←'} ${r.type}`)
-      .join(' · ');
-    const inWs = workspaceNodeIds.has(n.id);
-    const btn  = inWs
-      ? `<span class="neighbor-add-btn in-ws">已在空间</span>`
-      : `<button class="neighbor-add-btn" onclick="addNodeToWorkspace('${n.id}')">加入</button>`;
-    return `
-      <div class="neighbor-item">
-        <div class="neighbor-dot" style="background:${color}"></div>
-        <div class="neighbor-info">
-          <div class="neighbor-name" title="${name}">${name}</div>
-          <div class="neighbor-meta">${lbl}${rels ? ' · ' + rels : ''}</div>
-        </div>
-        ${btn}
-      </div>`;
-  }).join('');
-}
-
-async function addAllFilteredNeighbors() {
-  if (!_nbRawData || !currentWorkspace) return;
-  const toAdd = _nbRawData.neighbors
-    .filter(_nbMatchesFilters)
-    .filter(n => !workspaceNodeIds.has(n.id))
-    .map(n => n.id);
-
-  if (!toAdd.length) { toast('⚠️ 过滤结果中无新节点可加入', 'err'); return; }
-
-  try {
-    await api('POST', `/workspaces/${currentWorkspace.id}/nodes`, { node_ids: toAdd });
-
-    const data = await api('GET', `/workspaces/${currentWorkspace.id}/graph`);
-    workspaceNodeIds = new Set(data.nodes.map(n => n.id));
-
-    data.nodes.forEach(n => {
-      if (!visNodes.get(n.id)) {
-        const lk = lockedEntities.get(n.id);
-        visNodes.add(lk ? makeVisNodeLocked(n, lk.username, lk.color) : makeVisNode(n));
-      }
-    });
-    data.edges.forEach(e => { if (!visEdges.get(e.id)) visEdges.add(makeVisEdge(e)); });
-
-    const ws = _workspaces.find(w => w.id === currentWorkspace.id);
-    if (ws) ws.node_count = data.nodes.length;
-    _renderWorkspaceSelect();
-
-    network.setOptions({ physics: { enabled: true } });
-    setTimeout(() => { network.setOptions({ physics: { enabled: false } }); saveNodePositions(); }, 2000);
-    updateStats(); updateEmptyState();
-    toast(`✅ 已加入 ${toAdd.length} 个节点`);
-
-    _renderNeighborList(); // refresh badges
-  } catch {}
-}
 
 // ── Button bindings ───────────────────────────────────────────────────────────
-document.getElementById('btn-load').onclick = () => loadCurrentView();
 document.getElementById('btn-add-node').onclick = openCreateNodeModal;
 document.getElementById('btn-add-edge').onclick = openCreateEdgeModal;
 document.getElementById('btn-delete').onclick = () => {
@@ -3256,7 +2912,6 @@ document.getElementById('btn-delete').onclick = () => {
   else if (selectedEdgeIds.length === 1) deleteEdge(selectedEdgeIds[0]);
   else toast('⚠️ 请先选中要删除的元素', 'err');
 };
-document.getElementById('btn-schemas').onclick = openSchemasModal;
 document.getElementById('btn-fit').onclick = () => network && network.fit({ animation: true });
 document.getElementById('btn-layout').onclick = async () => {
   if (!network) return;
@@ -3267,7 +2922,7 @@ document.getElementById('btn-layout').onclick = async () => {
   setTimeout(() => {
     network.setOptions({ physics: { enabled: false } });
     saveNodePositions();
-  }, 2500);
+  }, PHYSICS_SETTLE_MS);
 };
 document.getElementById('btn-zoom-in').onclick = () => network && network.moveTo({ scale: network.getScale() * 1.3, animation: true });
 document.getElementById('btn-zoom-out').onclick = () => network && network.moveTo({ scale: network.getScale() * 0.77, animation: true });
@@ -3361,11 +3016,9 @@ async function init() {
     initUserUI();
     connectWS();
     initNetwork();
-    checkStatus();
     refreshLabels();
     loadOntology();
     loadWorkspaces().then(() => loadCurrentView());
-    setInterval(checkStatus, 30000);
   } catch {
     // Server might be starting up — stay on overlay
     localStorage.removeItem('auth_token');
