@@ -341,6 +341,7 @@
               <option value="number">数字 (number)</option>
               <option value="boolean">布尔 (boolean)</option>
               <option value="date">日期 (date)</option>
+              <option value="list">列表 (list)</option>
             </select>
           </div>
         </div>
@@ -624,7 +625,7 @@ function updateModeBadge() {
 }
 
 // ── Field helpers ──────────────────────────────────────────────────────────────
-const TYPE_LABELS = { string: '文本', number: '数字', boolean: '布尔', date: '日期' };
+const TYPE_LABELS = { string: '文本', number: '数字', boolean: '布尔', date: '日期', list: '列表' };
 
 function fieldCountBadges(entityType, entityLabel) {
   const fields = fieldSchemas.filter(f => f.entity_type === entityType && f.entity_label === entityLabel);

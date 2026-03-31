@@ -61,7 +61,7 @@ def _to_dict(row: sqlite3.Row) -> dict:
 
 # ── Models ─────────────────────────────────────────────────────────────────────
 
-VALID_PROP_TYPES = {"string", "number", "boolean", "date"}
+VALID_PROP_TYPES = {"string", "number", "boolean", "date", "list"}
 
 class SchemaCreate(BaseModel):
     entity_type:   str = "node"          # "node" or "edge"
