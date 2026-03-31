@@ -52,12 +52,6 @@ class NodeUpdate(BaseModel):
     labels: Optional[List[str]] = None
     properties: Optional[Dict[str, Any]] = None
 
-class RelationshipCreate(BaseModel):
-    source_id: int
-    target_id: int
-    type: str = "RELATES_TO"
-    properties: Dict[str, Any] = {}
-
 class RelationshipUpdate(BaseModel):
     type: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
@@ -312,26 +306,6 @@ async def delete_node(node_id: str, user=Depends(get_current_user)):
 
 # ── Relationships ─────────────────────────────────────────────────────────────
 
-@app.post("/api/relationships", status_code=201)
-async def create_relationship(rel: RelationshipCreate, user=Depends(get_current_user)):
-    drv = get_driver()
-    rel_type = rel.type.replace("`", "")
-    with drv.session() as session:
-        result = session.run(
-            f"MATCH (a), (b) WHERE id(a) = $src AND id(b) = $tgt "
-            f"CREATE (a)-[r:`{rel_type}` $props]->(b) RETURN r",
-            src=rel.source_id, tgt=rel.target_id, props=rel.properties,
-        )
-        rec = result.single()
-        if not rec:
-            raise HTTPException(404, "Source or target node not found")
-        data = serialize_rel(rec["r"])
-    await manager.broadcast(
-        {"type": "entity_created", "entity_type": "edge", "entity": data},
-        exclude=user["sub"],
-    )
-    return data
-
 
 @app.post("/api/relationships/by-element-id", status_code=201)
 async def create_relationship_by_element_id(
@@ -410,17 +384,6 @@ async def delete_relationship(rel_id: str, user=Depends(get_current_user)):
 
 # ── Search & Metadata ─────────────────────────────────────────────────────────
 
-@app.get("/api/search")
-async def search_nodes(q: str, limit: int = Query(50, le=200), _=Depends(get_current_user)):
-    drv = get_driver()
-    with drv.session() as session:
-        result = session.run(
-            "MATCH (n) WHERE any(k IN keys(n) WHERE toLower(toString(n[k])) CONTAINS toLower($q)) "
-            "RETURN n LIMIT $limit",
-            q=q, limit=limit,
-        )
-        return [serialize_node(rec["n"]) for rec in result]
-
 
 @app.get("/api/labels")
 async def get_labels(_=Depends(get_current_user)):
@@ -466,12 +429,13 @@ async def get_neighbors(node_id: str, limit: int = 50, _=Depends(get_current_use
 @app.get("/api/status")
 def status():
     try:
-        if driver:
-            driver.verify_connectivity()
-            return {"connected": True, "uri": NEO4J_URI}
+        d = get_driver()
+        d.verify_connectivity()
+        return {"connected": True, "uri": NEO4J_URI}
+    except HTTPException:
+        return {"connected": False, "error": "Driver not initialized"}
     except Exception as e:
         return {"connected": False, "error": str(e)}
-    return {"connected": False, "error": "Driver not initialized"}
 
 
 # ── Export / Import ───────────────────────────────────────────────────────────
