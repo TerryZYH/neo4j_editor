@@ -1,7 +1,7 @@
 import sqlite3
 import json
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -50,34 +50,146 @@ def init_version_db():
                 schemas_snapshot TEXT NOT NULL
             )
         """)
+        # Migrate: add checkpoint_type column
+        try:
+            conn.execute(
+                "ALTER TABLE checkpoints ADD COLUMN checkpoint_type TEXT NOT NULL DEFAULT 'manual'"
+            )
+        except Exception:
+            pass
+        # Mark existing system-created checkpoints as auto
+        conn.execute(
+            "UPDATE checkpoints SET checkpoint_type='auto' "
+            "WHERE checkpoint_type='manual' AND created_by='system' AND name LIKE '自动存档%'"
+        )
+
+        # Archive retention config table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS archive_config (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+        # Insert defaults if not present
+        for k, v in [('hourly_hours', '12'), ('daily_days', '7'), ('monthly_months', '0')]:
+            conn.execute(
+                "INSERT OR IGNORE INTO archive_config (key, value) VALUES (?, ?)", (k, v)
+            )
         conn.commit()
+
+
+# ── Archive config ─────────────────────────────────────────────────────────────
+
+def get_archive_config() -> dict:
+    with sqlite3.connect(SCHEMA_DB_PATH) as conn:
+        rows = conn.execute("SELECT key, value FROM archive_config").fetchall()
+    cfg = {r[0]: r[1] for r in rows}
+    return {
+        "hourly_hours":    int(cfg.get("hourly_hours", 12)),
+        "daily_days":      int(cfg.get("daily_days", 7)),
+        "monthly_months":  int(cfg.get("monthly_months", 0)),
+    }
 
 
 # ── Auto-checkpoint ────────────────────────────────────────────────────────────
 
 def auto_checkpoint():
-    """Create a daily auto-checkpoint before the first write of the day (lazy)."""
-    today = datetime.now(timezone.utc).date().isoformat()
-    name = f"自动存档 {today}"
+    """Create an hourly auto-checkpoint on the first write of each hour, then prune."""
+    now = datetime.now(timezone.utc)
+    hour_slot = now.strftime("%Y-%m-%d %H")
+    name = f"自动存档 {hour_slot}:00"
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:
         row = conn.execute(
-            "SELECT id FROM checkpoints WHERE name=?", (name,)
+            "SELECT id FROM checkpoints WHERE name=? AND checkpoint_type='auto'", (name,)
         ).fetchone()
         if row:
-            return  # Already created today
-    # Take snapshot and persist
+            return  # Already created for this hour
     graph, schemas = _take_snapshot()
-    now = datetime.now(timezone.utc).isoformat()
+    created_at = now.isoformat()
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:
         conn.execute(
             """INSERT OR IGNORE INTO checkpoints
-               (name, description, created_by, created_at, graph_snapshot, schemas_snapshot)
-               VALUES (?,?,?,?,?,?)""",
-            (name, "系统自动存档", "system", now,
+               (name, description, created_by, created_at, graph_snapshot, schemas_snapshot, checkpoint_type)
+               VALUES (?,?,?,?,?,?,?)""",
+            (name, "系统自动存档", "system", created_at,
              json.dumps(graph, ensure_ascii=False),
-             json.dumps(schemas, ensure_ascii=False)),
+             json.dumps(schemas, ensure_ascii=False),
+             "auto"),
         )
         conn.commit()
+    prune_auto_checkpoints()
+
+
+def prune_auto_checkpoints():
+    """Apply tiered retention: hourly window → daily window → monthly window."""
+    cfg = get_archive_config()
+    hourly_hours   = cfg["hourly_hours"]
+    daily_days     = cfg["daily_days"]
+    monthly_months = cfg["monthly_months"]
+
+    now = datetime.now(timezone.utc)
+    hourly_cutoff = now - timedelta(hours=hourly_hours)
+    daily_cutoff  = now - timedelta(days=daily_days)
+
+    with sqlite3.connect(SCHEMA_DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT id, created_at FROM checkpoints "
+            "WHERE checkpoint_type='auto' ORDER BY created_at ASC"
+        ).fetchall()
+
+    if not rows:
+        return
+
+    kept_ids: set = set()
+    daily_best: dict  = {}   # date_str  → (id, created_dt)
+    monthly_best: dict = {}  # month_str → (id, created_dt)
+
+    for row_id, created_at_str in rows:
+        # Normalize timezone
+        s = created_at_str
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            created = datetime.fromisoformat(s)
+        except ValueError:
+            created = datetime.fromisoformat(s[:19]).replace(tzinfo=timezone.utc)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+
+        if created >= hourly_cutoff:
+            # Zone 1: within hourly window — keep all
+            kept_ids.add(row_id)
+        elif created >= daily_cutoff:
+            # Zone 2: within daily window — keep latest per calendar day
+            day_key = created.strftime("%Y-%m-%d")
+            if day_key not in daily_best or created > daily_best[day_key][1]:
+                daily_best[day_key] = (row_id, created)
+        else:
+            # Zone 3: beyond daily window — keep latest per calendar month
+            month_key = created.strftime("%Y-%m")
+            if month_key not in monthly_best or created > monthly_best[month_key][1]:
+                monthly_best[month_key] = (row_id, created)
+
+    for cp_id, _ in daily_best.values():
+        kept_ids.add(cp_id)
+
+    for _month, (cp_id, created) in monthly_best.items():
+        if monthly_months > 0:
+            oldest_keep = now - timedelta(days=monthly_months * 30)
+            if created >= oldest_keep:
+                kept_ids.add(cp_id)
+        else:
+            kept_ids.add(cp_id)  # 0 = unlimited
+
+    all_ids = {row_id for row_id, _ in rows}
+    to_delete = list(all_ids - kept_ids)
+    if to_delete:
+        with sqlite3.connect(SCHEMA_DB_PATH) as conn:
+            placeholders = ",".join("?" * len(to_delete))
+            conn.execute(
+                f"DELETE FROM checkpoints WHERE id IN ({placeholders})", to_delete
+            )
+            conn.commit()
 
 
 # ── Operation log ──────────────────────────────────────────────────────────────
@@ -203,6 +315,12 @@ def _apply_snapshot(graph: dict, schemas: dict, admin_username: str):
 class CheckpointCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+
+class ArchiveConfigUpdate(BaseModel):
+    hourly_hours:   int
+    daily_days:     int
+    monthly_months: int
 
 
 # ── Undo helper ────────────────────────────────────────────────────────────────
@@ -406,6 +524,35 @@ async def undo_operation(op_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+# ── Routes: archive config ─────────────────────────────────────────────────────
+
+@router.get("/archive-config")
+def get_archive_config_api(_=Depends(get_current_user)):
+    return get_archive_config()
+
+
+@router.put("/archive-config")
+def update_archive_config_api(data: ArchiveConfigUpdate, _admin=Depends(require_admin)):
+    if data.hourly_hours < 1:
+        raise HTTPException(400, "hourly_hours 最小为 1")
+    if data.daily_days < 1:
+        raise HTTPException(400, "daily_days 最小为 1")
+    if data.monthly_months < 0:
+        raise HTTPException(400, "monthly_months 不能为负数")
+    with sqlite3.connect(SCHEMA_DB_PATH) as conn:
+        for k, v in [
+            ("hourly_hours",   str(data.hourly_hours)),
+            ("daily_days",     str(data.daily_days)),
+            ("monthly_months", str(data.monthly_months)),
+        ]:
+            conn.execute(
+                "INSERT OR REPLACE INTO archive_config (key, value) VALUES (?, ?)", (k, v)
+            )
+        conn.commit()
+    prune_auto_checkpoints()
+    return get_archive_config()
+
+
 # ── Routes: checkpoints ────────────────────────────────────────────────────────
 
 @router.get("/checkpoints")
@@ -413,7 +560,7 @@ def list_checkpoints(_=Depends(get_current_user)):
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT id, name, description, created_by, created_at "
+            "SELECT id, name, description, created_by, created_at, checkpoint_type "
             "FROM checkpoints ORDER BY id DESC"
         ).fetchall()
     return [dict(r) for r in rows]
@@ -426,16 +573,17 @@ def create_checkpoint(data: CheckpointCreate, user=Depends(get_current_user)):
     with sqlite3.connect(SCHEMA_DB_PATH) as conn:
         conn.execute(
             """INSERT INTO checkpoints
-               (name, description, created_by, created_at, graph_snapshot, schemas_snapshot)
-               VALUES (?,?,?,?,?,?)""",
+               (name, description, created_by, created_at, graph_snapshot, schemas_snapshot, checkpoint_type)
+               VALUES (?,?,?,?,?,?,?)""",
             (data.name.strip(), data.description, user["username"], now,
              json.dumps(graph, ensure_ascii=False),
-             json.dumps(schemas, ensure_ascii=False)),
+             json.dumps(schemas, ensure_ascii=False),
+             "manual"),
         )
         conn.commit()
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT id, name, description, created_by, created_at "
+            "SELECT id, name, description, created_by, created_at, checkpoint_type "
             "FROM checkpoints WHERE rowid=last_insert_rowid()"
         ).fetchone()
     return dict(row)

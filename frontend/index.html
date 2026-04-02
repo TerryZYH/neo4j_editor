@@ -640,6 +640,43 @@
     .cp-item { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }
     .cp-item:last-child { border-bottom:none; }
     .cp-meta { font-size:11px; color:var(--text-muted); margin-top:2px; }
+    /* ── Archive timeline ── */
+    .cp-filter-btn { font-size:11px; padding:3px 10px; }
+    .cp-filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .cp-tl-section { margin-bottom:6px; }
+    .cp-tl-label {
+      display:flex; align-items:center; gap:8px;
+      font-size:11px; color:var(--text-muted); padding:8px 0 4px;
+      letter-spacing:.3px;
+    }
+    .cp-tl-label::after { content:''; flex:1; height:1px; background:var(--border); }
+    .cp-tl-items { border-left:2px solid var(--border); margin-left:5px; }
+    .cp-tl-row {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:7px 4px 7px 14px;
+      border-bottom:1px solid rgba(255,255,255,.04);
+      position:relative;
+    }
+    .cp-tl-row:last-child { border-bottom:none; }
+    .cp-tl-dot {
+      width:10px; height:10px; border-radius:50%; flex-shrink:0;
+      margin-top:4px; position:relative; left:-20px; margin-right:-10px;
+      border:2px solid var(--surface);
+    }
+    .archive-settings-panel {
+      margin-bottom:12px; padding:12px 14px;
+      background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+    }
+    .archive-cfg-grid {
+      display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;
+    }
+    .archive-cfg-grid label { font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px; }
+    .archive-cfg-grid input {
+      width:100%; padding:5px 8px; box-sizing:border-box;
+      background:var(--surface); border:1px solid var(--border); border-radius:4px;
+      color:var(--text); font-size:13px; outline:none;
+    }
+    .archive-cfg-grid input:focus { border-color:var(--accent); }
     @keyframes slideIn {
       from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
@@ -1123,10 +1160,44 @@
         <div id="history-log-content"><div style="color:var(--text-muted);font-size:13px">加载中…</div></div>
       </div>
       <div id="history-pane-checkpoints" style="display:none">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <!-- Create form -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <input type="text" id="cp-name-input" placeholder="存档名称（必填）"
             style="flex:1;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;outline:none" />
           <button class="btn primary" onclick="createCheckpoint()">＋ 创建存档</button>
+        </div>
+        <!-- Filter + settings toolbar -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <div style="display:flex;gap:4px">
+            <button class="btn cp-filter-btn active" data-f="all"    onclick="setCpFilter('all')">全部</button>
+            <button class="btn cp-filter-btn"        data-f="auto"   onclick="setCpFilter('auto')">自动</button>
+            <button class="btn cp-filter-btn"        data-f="manual" onclick="setCpFilter('manual')">手动</button>
+          </div>
+          <div id="cp-settings-btn-wrap" style="display:none;margin-left:auto">
+            <button class="btn" style="font-size:12px;padding:3px 10px" onclick="toggleArchiveSettings()">⚙ 存档策略</button>
+          </div>
+        </div>
+        <!-- Settings panel (admin only, hidden by default) -->
+        <div id="archive-settings-panel" class="archive-settings-panel" style="display:none">
+          <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:10px">自动存档保留策略</div>
+          <div class="archive-cfg-grid">
+            <div>
+              <label>每小时保留窗口（小时）</label>
+              <input type="number" id="cfg-hourly-hours" min="1" max="168" value="12">
+            </div>
+            <div>
+              <label>每天保留窗口（天数）</label>
+              <input type="number" id="cfg-daily-days" min="1" max="365" value="7">
+            </div>
+            <div>
+              <label>每月保留上限（月，0=不限）</label>
+              <input type="number" id="cfg-monthly-months" min="0" max="120" value="0">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="btn primary" style="font-size:12px;padding:4px 14px" onclick="saveArchiveConfig()">保存</button>
+            <span id="cfg-save-hint" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
         </div>
         <div id="history-cp-content"><div style="color:var(--text-muted);font-size:13px">加载中…</div></div>
       </div>
@@ -3163,7 +3234,20 @@ function switchHistoryTab(tab) {
   document.getElementById('history-pane-log').style.display         = tab === 'log'         ? '' : 'none';
   document.getElementById('history-pane-checkpoints').style.display = tab === 'checkpoints' ? '' : 'none';
   if (tab === 'log')         loadOperations();
-  if (tab === 'checkpoints') loadCheckpoints();
+  if (tab === 'checkpoints') { loadArchiveConfig().then(loadCheckpoints); }
+}
+
+// ── Time formatting (UTC → local) ──────────────────────────────────────────────
+function fmtLocalTime(isoStr, includeSeconds = true) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2, '0');
+  const parts = [
+    d.getFullYear(), '-', pad(d.getMonth()+1), '-', pad(d.getDate()),
+    ' ', pad(d.getHours()), ':', pad(d.getMinutes()),
+  ];
+  if (includeSeconds) parts.push(':', pad(d.getSeconds()));
+  return parts.join('');
 }
 
 // ── Operation filter builder ───────────────────────────────────────────────────
@@ -3276,7 +3360,7 @@ async function loadOperations() {
             <span style="font-size:13px;font-weight:500;color:var(--text)">${_esc(op.summary)}</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <span class="cp-meta">${_esc(op.username)} · ${op.operated_at.replace('T',' ').slice(0,19)}</span>
+            <span class="cp-meta">${_esc(op.username)} · ${fmtLocalTime(op.operated_at)}</span>
             <button class="btn" style="font-size:11px;padding:2px 8px"
                     onclick="toggleOpDetail(${op.id}, this)">详情</button>
             ${isAdmin && !op.is_undo && !op.undone ? `<button class="btn danger" style="font-size:11px;padding:2px 8px"
@@ -3410,29 +3494,127 @@ async function undoOperation(id, summary) {
   } catch {}
 }
 
+// ── Archive config ─────────────────────────────────────────────────────────────
+
+let _cpFilter = 'all';
+let _archiveCfg = { hourly_hours: 12, daily_days: 7, monthly_months: 0 };
+
+function setCpFilter(f) {
+  _cpFilter = f;
+  document.querySelectorAll('.cp-filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.f === f)
+  );
+  loadCheckpoints();
+}
+
+async function loadArchiveConfig() {
+  try {
+    _archiveCfg = await api('GET', '/version/archive-config');
+    document.getElementById('cfg-hourly-hours').value   = _archiveCfg.hourly_hours;
+    document.getElementById('cfg-daily-days').value     = _archiveCfg.daily_days;
+    document.getElementById('cfg-monthly-months').value = _archiveCfg.monthly_months;
+  } catch {}
+}
+
+function toggleArchiveSettings() {
+  const panel = document.getElementById('archive-settings-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  if (opening) loadArchiveConfig();
+}
+
+async function saveArchiveConfig() {
+  const cfg = {
+    hourly_hours:   Math.max(1, parseInt(document.getElementById('cfg-hourly-hours').value)   || 12),
+    daily_days:     Math.max(1, parseInt(document.getElementById('cfg-daily-days').value)     || 7),
+    monthly_months: Math.max(0, parseInt(document.getElementById('cfg-monthly-months').value) || 0),
+  };
+  try {
+    _archiveCfg = await api('PUT', '/version/archive-config', cfg);
+    const hint = document.getElementById('cfg-save-hint');
+    hint.textContent = '✓ 已保存并执行修剪';
+    setTimeout(() => { hint.textContent = ''; }, 2500);
+    loadCheckpoints();
+  } catch {}
+}
+
+// ── Checkpoint timeline ────────────────────────────────────────────────────────
+
 async function loadCheckpoints() {
   const el = document.getElementById('history-cp-content');
   el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载中…</div>';
+
+  // Show settings button for admins
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  document.getElementById('cp-settings-btn-wrap').style.display = isAdmin ? '' : 'none';
+
   try {
-    const cps = await api('GET', '/version/checkpoints');
+    let cps = await api('GET', '/version/checkpoints');
+
+    // Apply type filter
+    if (_cpFilter === 'auto')   cps = cps.filter(c => c.checkpoint_type === 'auto');
+    else if (_cpFilter === 'manual') cps = cps.filter(c => c.checkpoint_type !== 'auto');
+
     if (!cps.length) {
-      el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">今日自动存档将在首次操作时自动创建</div>';
+      el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">${
+        _cpFilter === 'all' ? '首次写操作时将自动创建每小时存档' : '无匹配存档'}</div>`;
       return;
     }
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    el.innerHTML = cps.map(cp => `<div class="cp-item">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500;color:var(--text)">${_esc(cp.name)}</div>
-        ${cp.description ? `<div class="cp-meta">${_esc(cp.description)}</div>` : ''}
-        <div class="cp-meta">by ${_esc(cp.created_by)} · ${cp.created_at.replace('T',' ').slice(0,19)}</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">${isAdmin ? `
-        <button class="btn" style="font-size:12px;padding:3px 10px"
-                onclick="restoreCheckpoint(${cp.id},'${_esc(cp.name)}')">恢复</button>
-        <button class="btn danger" style="font-size:12px;padding:3px 10px"
-                onclick="deleteCheckpoint(${cp.id})">删除</button>` : ''}
-      </div>
-    </div>`).join('');
+
+    const now = Date.now();
+    const hourlyMs = (_archiveCfg.hourly_hours || 12) * 3_600_000;
+    const dailyMs  = (_archiveCfg.daily_days   ||  7) * 86_400_000;
+
+    // Zone definitions: [key, label, color, test(ageMs, type)]
+    const zones = [
+      { key:'hourly', color:'var(--accent)',  items:[],
+        label:`⏱ 最近 ${_archiveCfg.hourly_hours || 12} 小时 · 每小时一份` },
+      { key:'daily',  color:'#a78bfa',        items:[],
+        label:`📅 过去 ${_archiveCfg.daily_days || 7} 天 · 每天一份` },
+      { key:'old',    color:'#fb923c',        items:[],
+        label:'📆 更早 · 每月一份' },
+      { key:'manual', color:'#4ade80',        items:[],
+        label:'📌 手动存档' },
+    ];
+
+    for (const cp of cps) {
+      if (cp.checkpoint_type !== 'auto') {
+        zones[3].items.push(cp);
+      } else {
+        const age = now - new Date(cp.created_at).getTime();
+        if (age < hourlyMs)      zones[0].items.push(cp);
+        else if (age < dailyMs)  zones[1].items.push(cp);
+        else                     zones[2].items.push(cp);
+      }
+    }
+
+    let html = '';
+    for (const zone of zones) {
+      if (!zone.items.length) continue;
+      html += `<div class="cp-tl-section">
+        <div class="cp-tl-label">${_esc(zone.label)}</div>
+        <div class="cp-tl-items">`;
+      for (const cp of zone.items) {
+        const isAuto = cp.checkpoint_type === 'auto';
+        const safeName = _esc(cp.name).replace(/'/g, '&#39;');
+        html += `<div class="cp-tl-row">
+          <div class="cp-tl-dot" style="background:${zone.color}"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;color:var(--text)">${_esc(cp.name)}</div>
+            ${cp.description && !isAuto ? `<div class="cp-meta">${_esc(cp.description)}</div>` : ''}
+            <div class="cp-meta">by ${_esc(cp.created_by)} · ${fmtLocalTime(cp.created_at, false)}</div>
+          </div>
+          ${isAdmin ? `<div style="display:flex;gap:5px;flex-shrink:0">
+            <button class="btn" style="font-size:12px;padding:3px 10px"
+                    onclick="restoreCheckpoint(${cp.id},'${safeName}')">恢复</button>
+            <button class="btn danger" style="font-size:12px;padding:3px 8px"
+                    onclick="deleteCheckpoint(${cp.id})">删</button>
+          </div>` : ''}
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    el.innerHTML = html;
   } catch { el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载失败</div>'; }
 }
 

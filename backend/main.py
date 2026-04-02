@@ -1,8 +1,10 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+import asyncio
 import os, json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -19,11 +21,41 @@ from ontology import (
 )
 from graph_db import init_driver, get_driver, serialize_node, serialize_rel, NEO4J_URI
 from workspace import init_workspace_db, router as workspace_router
-from version import init_version_db, router as version_router, log_operation, auto_checkpoint
+from version import init_version_db, router as version_router, log_operation, auto_checkpoint  # auto_checkpoint used by scheduler
 
 load_dotenv()
 
-app = FastAPI(title="Neo4j Graph Editor")
+
+async def _checkpoint_scheduler():
+    """Background task: run auto_checkpoint every 60 s (idempotent per-hour check inside)."""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            auto_checkpoint()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass  # Never let the scheduler crash silently kill itself
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    init_schema_db()
+    init_ontology_db()
+    init_workspace_db()
+    init_driver()
+    init_version_db()
+    task = asyncio.create_task(_checkpoint_scheduler())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Neo4j Graph Editor", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,13 +68,6 @@ app.include_router(schemas_router)
 app.include_router(ontology_router)
 app.include_router(workspace_router)
 app.include_router(version_router)
-
-init_db()
-init_schema_db()
-init_ontology_db()
-init_workspace_db()
-init_driver()
-init_version_db()
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -227,7 +252,6 @@ def _check_id_uniqueness(session, labels: list, properties: dict, exclude_id: st
 
 @app.post("/api/nodes", status_code=201)
 async def create_node(node: NodeCreate, user=Depends(get_current_user)):
-    auto_checkpoint()
     _check_labels(node.labels)
     drv = get_driver()
     labels_str = ":".join(f"`{l}`" for l in node.labels) if node.labels else "Node"
@@ -265,7 +289,6 @@ async def get_node(node_id: str, _=Depends(get_current_user)):
 
 @app.put("/api/nodes/{node_id}")
 async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_user)):
-    auto_checkpoint()
     lk = manager.get_lock(node_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该节点正在被 {lk['username']} 编辑")
@@ -317,7 +340,6 @@ async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_u
 
 @app.delete("/api/nodes/{node_id}")
 async def delete_node(node_id: str, user=Depends(get_current_user)):
-    auto_checkpoint()
     lk = manager.get_lock(node_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该节点正在被 {lk['username']} 编辑")
@@ -350,7 +372,6 @@ async def delete_node(node_id: str, user=Depends(get_current_user)):
 
 @app.post("/api/linked-node", status_code=201)
 async def create_linked_node(data: LinkedNodeCreate, user=Depends(get_current_user)):
-    auto_checkpoint()
     _check_labels(data.labels)
     rel_type = data.rel_type.replace("`", "")
     labels_str = ":".join(f"`{l}`" for l in data.labels) if data.labels else "Node"
@@ -410,7 +431,6 @@ async def create_relationship_by_element_id(
     properties: Dict[str, Any] = {},
     user=Depends(get_current_user),
 ):
-    auto_checkpoint()
     drv = get_driver()
     rel_type = type.replace("`", "")
     with drv.session() as session:
@@ -444,7 +464,6 @@ async def create_relationship_by_element_id(
 
 @app.put("/api/relationships/{rel_id}")
 async def update_relationship(rel_id: str, rel: RelationshipUpdate, user=Depends(get_current_user)):
-    auto_checkpoint()
     lk = manager.get_lock(rel_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该关系正在被 {lk['username']} 编辑")
@@ -478,7 +497,6 @@ async def update_relationship(rel_id: str, rel: RelationshipUpdate, user=Depends
 
 @app.delete("/api/relationships/{rel_id}")
 async def delete_relationship(rel_id: str, user=Depends(get_current_user)):
-    auto_checkpoint()
     lk = manager.get_lock(rel_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该关系正在被 {lk['username']} 编辑")
