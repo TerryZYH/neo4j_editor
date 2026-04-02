@@ -19,6 +19,7 @@ from ontology import (
 )
 from graph_db import init_driver, get_driver, serialize_node, serialize_rel, NEO4J_URI
 from workspace import init_workspace_db, router as workspace_router
+from version import init_version_db, router as version_router, log_operation, auto_checkpoint
 
 load_dotenv()
 
@@ -34,12 +35,14 @@ app.include_router(admin_router)
 app.include_router(schemas_router)
 app.include_router(ontology_router)
 app.include_router(workspace_router)
+app.include_router(version_router)
 
 init_db()
 init_schema_db()
 init_ontology_db()
 init_workspace_db()
 init_driver()
+init_version_db()
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -55,6 +58,14 @@ class NodeUpdate(BaseModel):
 class RelationshipUpdate(BaseModel):
     type: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
+
+class LinkedNodeCreate(BaseModel):
+    labels: List[str] = ["Node"]
+    properties: Dict[str, Any] = {}
+    source_id: str
+    direction: str = "out"      # "out": source→new, "in": new→source
+    rel_type: str = "RELATES_TO"
+    rel_properties: Dict[str, Any] = {}
 
 class CypherQuery(BaseModel):
     query: str
@@ -216,6 +227,7 @@ def _check_id_uniqueness(session, labels: list, properties: dict, exclude_id: st
 
 @app.post("/api/nodes", status_code=201)
 async def create_node(node: NodeCreate, user=Depends(get_current_user)):
+    auto_checkpoint()
     _check_labels(node.labels)
     drv = get_driver()
     labels_str = ":".join(f"`{l}`" for l in node.labels) if node.labels else "Node"
@@ -228,6 +240,11 @@ async def create_node(node: NodeCreate, user=Depends(get_current_user)):
         if not rec:
             raise HTTPException(500, "Node creation failed")
         data = serialize_node(rec["n"])
+    log_operation(
+        f"创建节点 [{', '.join(node.labels)}]",
+        [{"op": "create_node", "entity_type": "node", "entity_id": data["id"], "before": None, "after": data}],
+        user["sub"], user["username"],
+    )
     await manager.broadcast(
         {"type": "entity_created", "entity_type": "node", "entity": data},
         exclude=user["sub"],
@@ -248,6 +265,7 @@ async def get_node(node_id: str, _=Depends(get_current_user)):
 
 @app.put("/api/nodes/{node_id}")
 async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_user)):
+    auto_checkpoint()
     lk = manager.get_lock(node_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该节点正在被 {lk['username']} 编辑")
@@ -256,6 +274,8 @@ async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_u
 
     drv = get_driver()
     with drv.session() as session:
+        _br = session.run("MATCH (n) WHERE elementId(n) = $id RETURN n", id=node_id).single()
+        before_data = serialize_node(_br["n"]) if _br else None
         if node.properties is not None:
             # Resolve effective labels for uniqueness check
             effective_labels = node.labels if node.labels else list(
@@ -282,6 +302,12 @@ async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_u
         if not rec:
             raise HTTPException(404, "Node not found")
         data = serialize_node(rec["n"])
+    labels_str = ", ".join(before_data["labels"]) if before_data else ""
+    log_operation(
+        f"编辑节点 [{labels_str}]",
+        [{"op": "update_node", "entity_type": "node", "entity_id": node_id, "before": before_data, "after": data}],
+        user["sub"], user["username"],
+    )
     await manager.broadcast(
         {"type": "entity_updated", "entity_type": "node", "entity": data},
         exclude=user["sub"],
@@ -291,17 +317,86 @@ async def update_node(node_id: str, node: NodeUpdate, user=Depends(get_current_u
 
 @app.delete("/api/nodes/{node_id}")
 async def delete_node(node_id: str, user=Depends(get_current_user)):
+    auto_checkpoint()
     lk = manager.get_lock(node_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该节点正在被 {lk['username']} 编辑")
     drv = get_driver()
     with drv.session() as session:
+        _br = session.run("MATCH (n) WHERE elementId(n) = $id RETURN n", id=node_id).single()
+        before_data = serialize_node(_br["n"]) if _br else None
+        cascade_edges = [
+            serialize_rel(rec["r"], rec["r"].start_node.element_id, rec["r"].end_node.element_id)
+            for rec in session.run(
+                "MATCH (a)-[r]-(b) WHERE elementId(a) = $id RETURN r", id=node_id
+            )
+        ]
         session.run("MATCH (n) WHERE elementId(n) = $id DETACH DELETE n", id=node_id)
+    labels_str = ", ".join(before_data["labels"]) if before_data else ""
+    edge_suffix = f"（及 {len(cascade_edges)} 条关系）" if cascade_edges else ""
+    changes = [
+        {"op": "delete_edge", "entity_type": "edge", "entity_id": e["id"], "before": e, "after": None}
+        for e in cascade_edges
+    ] + [{"op": "delete_node", "entity_type": "node", "entity_id": node_id, "before": before_data, "after": None}]
+    log_operation(f"删除节点 [{labels_str}]{edge_suffix}", changes, user["sub"], user["username"])
     await manager.broadcast(
         {"type": "entity_deleted", "entity_type": "node", "entity_id": node_id},
         exclude=user["sub"],
     )
     return {"ok": True}
+
+
+# ── Linked node (node + edge as one atomic operation) ────────────────────────
+
+@app.post("/api/linked-node", status_code=201)
+async def create_linked_node(data: LinkedNodeCreate, user=Depends(get_current_user)):
+    auto_checkpoint()
+    _check_labels(data.labels)
+    rel_type = data.rel_type.replace("`", "")
+    labels_str = ":".join(f"`{l}`" for l in data.labels) if data.labels else "Node"
+
+    drv = get_driver()
+    with drv.session() as session:
+        _check_id_uniqueness(session, data.labels, data.properties)
+        node_rec = session.run(
+            f"CREATE (n:{labels_str} $props) RETURN n", props=data.properties
+        ).single()
+        if not node_rec:
+            raise HTTPException(500, "Node creation failed")
+        new_node = serialize_node(node_rec["n"])
+
+        src_id = data.source_id if data.direction == "out" else new_node["id"]
+        tgt_id = new_node["id"] if data.direction == "out" else data.source_id
+
+        src_lbls = list(session.run("MATCH (n) WHERE elementId(n)=$id RETURN labels(n) AS l", id=src_id).single()["l"])
+        tgt_lbls = list(session.run("MATCH (n) WHERE elementId(n)=$id RETURN labels(n) AS l", id=tgt_id).single()["l"])
+        _check_triple(src_lbls, rel_type, tgt_lbls)
+
+        edge_rec = session.run(
+            f"MATCH (a),(b) WHERE elementId(a)=$src AND elementId(b)=$tgt "
+            f"CREATE (a)-[r:`{rel_type}` $props]->(b) RETURN r",
+            src=src_id, tgt=tgt_id, props=data.rel_properties,
+        ).single()
+        if not edge_rec:
+            raise HTTPException(500, "Relationship creation failed")
+        edge = serialize_rel(edge_rec["r"], src_id, tgt_id)
+
+    labels_display = ", ".join(data.labels)
+    log_operation(
+        f"新建关联节点 [{labels_display}] —{rel_type}→",
+        [
+            {"op": "create_node", "entity_type": "node", "entity_id": new_node["id"], "before": None, "after": new_node},
+            {"op": "create_edge", "entity_type": "edge", "entity_id": edge["id"], "before": None, "after": edge},
+        ],
+        user["sub"], user["username"],
+    )
+    await manager.broadcast(
+        {"type": "entity_created", "entity_type": "node", "entity": new_node}, exclude=user["sub"]
+    )
+    await manager.broadcast(
+        {"type": "entity_created", "entity_type": "edge", "entity": edge}, exclude=user["sub"]
+    )
+    return {"node": new_node, "edge": edge}
 
 
 # ── Relationships ─────────────────────────────────────────────────────────────
@@ -315,6 +410,7 @@ async def create_relationship_by_element_id(
     properties: Dict[str, Any] = {},
     user=Depends(get_current_user),
 ):
+    auto_checkpoint()
     drv = get_driver()
     rel_type = type.replace("`", "")
     with drv.session() as session:
@@ -334,6 +430,11 @@ async def create_relationship_by_element_id(
         if not rec:
             raise HTTPException(404, "Source or target node not found")
         data = serialize_rel(rec["r"], source_element_id, target_element_id)
+    log_operation(
+        f"创建关系 {rel_type}",
+        [{"op": "create_edge", "entity_type": "edge", "entity_id": data["id"], "before": None, "after": data}],
+        user["sub"], user["username"],
+    )
     await manager.broadcast(
         {"type": "entity_created", "entity_type": "edge", "entity": data},
         exclude=user["sub"],
@@ -343,11 +444,14 @@ async def create_relationship_by_element_id(
 
 @app.put("/api/relationships/{rel_id}")
 async def update_relationship(rel_id: str, rel: RelationshipUpdate, user=Depends(get_current_user)):
+    auto_checkpoint()
     lk = manager.get_lock(rel_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该关系正在被 {lk['username']} 编辑")
     drv = get_driver()
     with drv.session() as session:
+        _br = session.run("MATCH ()-[r]->() WHERE elementId(r) = $id RETURN r", id=rel_id).single()
+        before_data = serialize_rel(_br["r"]) if _br else None
         if rel.properties is not None:
             session.run(
                 "MATCH ()-[r]->() WHERE elementId(r) = $id SET r = $props",
@@ -360,6 +464,11 @@ async def update_relationship(rel_id: str, rel: RelationshipUpdate, user=Depends
         if not rec:
             raise HTTPException(404, "Relationship not found")
         data = serialize_rel(rec["r"])
+    log_operation(
+        f"编辑关系 {data['type']}",
+        [{"op": "update_edge", "entity_type": "edge", "entity_id": rel_id, "before": before_data, "after": data}],
+        user["sub"], user["username"],
+    )
     await manager.broadcast(
         {"type": "entity_updated", "entity_type": "edge", "entity": data},
         exclude=user["sub"],
@@ -369,12 +478,21 @@ async def update_relationship(rel_id: str, rel: RelationshipUpdate, user=Depends
 
 @app.delete("/api/relationships/{rel_id}")
 async def delete_relationship(rel_id: str, user=Depends(get_current_user)):
+    auto_checkpoint()
     lk = manager.get_lock(rel_id)
     if lk and lk["user_id"] != user["sub"]:
         raise HTTPException(423, f"该关系正在被 {lk['username']} 编辑")
     drv = get_driver()
     with drv.session() as session:
+        _br = session.run("MATCH ()-[r]->() WHERE elementId(r) = $id RETURN r", id=rel_id).single()
+        before_data = serialize_rel(_br["r"]) if _br else None
         session.run("MATCH ()-[r]->() WHERE elementId(r) = $id DELETE r", id=rel_id)
+    rel_type = before_data["type"] if before_data else rel_id
+    log_operation(
+        f"删除关系 {rel_type}",
+        [{"op": "delete_edge", "entity_type": "edge", "entity_id": rel_id, "before": before_data, "after": None}],
+        user["sub"], user["username"],
+    )
     await manager.broadcast(
         {"type": "entity_deleted", "entity_type": "edge", "entity_id": rel_id},
         exclude=user["sub"],
