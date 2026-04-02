@@ -119,6 +119,7 @@ async def ws_endpoint(websocket: WebSocket, token: str = ""):
     try:
         payload = decode_token(token)
     except HTTPException:
+        await websocket.accept()
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
