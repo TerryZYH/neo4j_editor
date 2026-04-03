@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import asyncio
-import os, json
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -95,21 +95,6 @@ class LinkedNodeCreate(BaseModel):
 class CypherQuery(BaseModel):
     query: str
     params: Dict[str, Any] = {}
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def serialize_node(n):
-    return {"id": n.element_id, "labels": list(n.labels), "properties": dict(n)}
-
-def serialize_rel(r, source_id=None, target_id=None):
-    return {
-        "id": r.element_id,
-        "source": source_id if source_id is not None else r.start_node.element_id,
-        "target": target_id if target_id is not None else r.end_node.element_id,
-        "type": r.type,
-        "properties": dict(r),
-    }
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
